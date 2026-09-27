@@ -227,7 +227,7 @@ The consumer still requires a local `dev.conf` with a reachable ps5log TCP
 receiver. The builder copies it when present; without it the current consumer
 exits before GPU testing. A successful build is not a hardware receipt.
 
-Deploy and test only on **192.0.2.1**, via FTP port 2121 under
+Deploy and test only on the console configured locally, via FTP port 2121 under
 `/data/homebrew/PPSA88900/`. If unavailable, wait; no fallback console is
 authorized. The native consumer has not yet been run in this checkout.
 
@@ -263,4 +263,4 @@ The RTZ test checks scalar conversion; the RTE test checks typed texture loads,
 including subnormals and ties. Keep build manifests and hardware receipts
 separate: constructing an app does not validate its output. The native RTE
 result is recorded in [the receipt](docs/FSR4_TEXTURE_RTE_RESULT.json).
-Only 192.0.2.1 is authorized for deployment.
+Use only the console explicitly authorized in your local configuration.

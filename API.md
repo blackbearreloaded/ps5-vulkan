@@ -55,8 +55,8 @@ dependencies `VK_KHR_maintenance2` and `VK_KHR_image_format_list`; device
 creation requires those dependencies through extensions or their promoted
 core versions. These individual witnesses do not by themselves
 establish DXVK execution; see the separate
-[Vulkan 1.3 native workload](VALIDATION.md#experimental-vulkan-13-native-dxvk) and
-[the sampler T09 evidence](VALIDATION.md#t09-sampler-mirror-clamp-public-khr-promotion-2026-09-25).
+[Vulkan 1.3 native workload](VALIDATION.md) and
+[the sampler T09 evidence](VALIDATION.md).
 
 ## Core feature negotiation
 
@@ -107,7 +107,7 @@ have a native witness. This does not report BALLOT, ARITHMETIC,
   input/output 128/128. See [tessellation status](TESSELLATION_STATUS.md) for
   native witnesses, the focused 403-case upstream result and release status;
   this is not full CTS conformance or DXVK compatibility.
-  See [clip-cull native acceptance](VALIDATION.md#clip-cull-native-acceptance).
+  See [clip-cull native acceptance](VALIDATION.md).
 - The focused suite contains the original upstream
   `device_mandatory_features` oracle plus 12 executable compute scalar
   `R32_UINT` robustness cases: UBO/SSBO OOB reads and SSBO OOB writes over
@@ -412,7 +412,7 @@ smaller incompatible layer pitches. The graphics profile reports
   multi-device addressing and memory-model availability/visibility chains
   remain unsupported. The DeviceScope witness covers bounded same-dispatch
   producer/consumer ordering, not every synchronization pattern. See the
-  [memory-model and address evidence](VALIDATION.md#vulkan-memory-model-and-device-address-accounting-2026-09-23)
+  [memory-model and address evidence](VALIDATION.md)
   and [reporting matrix](conformance_inventory/reporting_matrix.json).
 - `shaderInt8`, `shaderInt16` and float16 arithmetic are not advertised. The
   supported shaders may load, convert and store narrow scalar/vector values in
@@ -658,7 +658,7 @@ dispatch, for indirect draws with non-zero `firstInstance`, for multi-command
 draws with `DrawIndex` 0..2 and for uint32-indexed indirect draws, and the
 public-SDK witness executes 65535 commands in one call, GPU-generated draw
 arguments and 32-bit indices at bit 31; see
-[VALIDATION.md](VALIDATION.md#indirect-and-indexed-draw-native-acceptance-2026-09-16).
+[VALIDATION.md](VALIDATION.md).
 Instance-rate vertex input and primitive restart remain unsupported, so
 `drawIndirectFirstInstance` is witnessed through `gl_InstanceIndex`, not
 through per-instance attributes.
@@ -870,7 +870,7 @@ The public driver interface exposes standard Vulkan 1.0 bookkeeping entry points
 - `vkGetDeviceMemoryCommitment`: Queries memory commitment in `*pCommittedMemoryInBytes`. Because ps5vk exposes no memory type with `VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT` and does not support lazily allocated memory, ordinary allocations are not reported as lazily committed, and the query safely reports 0 bytes committed (`*pCommittedMemoryInBytes = 0`).
 - `vkGetImageSubresourceLayout`: Queries image subresource layout. Tiled images report a zeroed structure (`*pLayout = {0}`) rather than a fabricated linear row or depth pitch. The one linear image this profile creates - the RGBA8 transfer-destination staging image described above - reports its real padded linear `offset`, `rowPitch`, `depthPitch`, `arrayPitch` and `size`; any other subresource of it, and every subresource of a tiled image, is zeroed.
 - `vkGetRenderAreaGranularity`: Returns `(1, 1)` pixel render area granularity for valid render passes (`offset = 0`, full pixel granularity).
-- Render-pass `pNext`: exactly one `VkRenderPassMultiviewCreateInfo` is understood and owned. View-mask counts must match the pass; an omitted view-offset array (count zero) means zero offsets. Non-zero offsets require valid view-local dependencies between distinct subpasses. Masks must be all zero or all non-zero; correlation masks must be disjoint. Unknown or duplicate chained structures fail closed. The measured graphics/runtime-compiler path exposes `VK_KHR_multiview`, `multiview=true`, `maxMultiviewViewCount=6` and `maxMultiviewInstanceIndex=134217727`. The bounded path supports up to eight ordered subpasses and vertex/fragment ViewIndex, array attachment clears and readback. Geometry/tessellation multiview remains false. Correlation masks remain hints, not commands. The core Vulkan 1.1 aggregate mirrors those same bounded capabilities. See [native validation](VALIDATION.md#multiview-native-acceptance).
+- Render-pass `pNext`: exactly one `VkRenderPassMultiviewCreateInfo` is understood and owned. View-mask counts must match the pass; an omitted view-offset array (count zero) means zero offsets. Non-zero offsets require valid view-local dependencies between distinct subpasses. Masks must be all zero or all non-zero; correlation masks must be disjoint. Unknown or duplicate chained structures fail closed. The measured graphics/runtime-compiler path exposes `VK_KHR_multiview`, `multiview=true`, `maxMultiviewViewCount=6` and `maxMultiviewInstanceIndex=134217727`. The bounded path supports up to eight ordered subpasses and vertex/fragment ViewIndex, array attachment clears and readback. Geometry/tessellation multiview remains false. Correlation masks remain hints, not commands. The core Vulkan 1.1 aggregate mirrors those same bounded capabilities. See [native validation](VALIDATION.md).
 - `vkResetDescriptorPool`: Resets all descriptor sets allocated from a descriptor pool back to the pool, preserving pool allocation state without requiring pool destruction.
 
 ## Queries and sparse image queries

@@ -20,3 +20,8 @@ dist-upstream-cts/
 dist-dxvk-render-witness/
 dist-t13-vertex-robustness-witness/
 dist-dxvk-eds-witness/
+
+# Keep generated diagnostics and personal configuration out of history.
+docs/*_RESULT.json
+docs/SOURCE_AUDIT.json
+local-results/

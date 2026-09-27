@@ -14,7 +14,7 @@ to its original authors and contributors:**
   for FSR4 INT8 shader optimizations, provider tooling and reference workloads.
   The audited revision is
   [528f13b17e48bfba5b153f17ec4ebdfb3afa5bcb](https://github.com/daniel-h-0/bc250-fsr4-fork/commit/528f13b17e48bfba5b153f17ec4ebdfb3afa5bcb);
-  see [the source audit](docs/SOURCE_AUDIT.json).
+  see the pinned dependency identities in the build tools.
 - **AMD / GPUOpen**: original FSR4 technology, shaders and model assets.
 
 BlackBearReloaded's work in this repository is the native PS5 adaptation,
