@@ -365,7 +365,7 @@ def main():
         app_crt_cpp = lab / "third_party/ps5-native-app-boilerplate/tooling/native/app_crt.cpp"
         crt = lib_dir / "crt.o"
         if app_crt_cpp.is_file():
-            subprocess.run([str(clang_wrapper), "-std=c++20", "-O2", "-fno-exceptions", "-fno-rtti",
+            subprocess.run([str(clang_wrapper) + "++", "-std=c++20", "-O2", "-fno-exceptions", "-fno-rtti",
                             "-c", str(app_crt_cpp), "-o", str(crt)], env=env, check=True)
         else:
             crt = sdk / "target/lib/crt1.o"
