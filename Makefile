@@ -540,8 +540,10 @@ build/libpsbc.host.a:
 
 # Compile captured FSR4 SPIR-V against the pinned PS5 compiler on the host.
 # Source extraction is explicit: the BC250 capsule is a separate upstream input.
-.PHONY: fsr4-compile-probe
+.PHONY: fsr4-compile-probe fsr4-family-inventory
 fsr4-compile-probe: build/fsr4_compile_probe
+fsr4-family-inventory: fsr4-compile-probe
+	$(PYTHON) tools/fsr4_compile_inventory.py
 
 build/fsr4_compile_probe: tools/fsr4_compile_probe.c src/ps5vk_compiler.c build/libpsbc.host.a
 	$(CC) -std=c11 -O2 -Wall -Wextra -Werror $(VULKAN_CFLAGS) -Isrc -Iinclude \
