@@ -1,5 +1,28 @@
 # Licensing and source provenance
 
+## FSR4 and BC250 credits
+
+**The BC250 FSR4 project is the primary technical reference behind this PS5
+FSR4 effort. Credit for that pioneering porting and optimization work belongs
+to its original authors and contributors:**
+
+- **[dmoraza / dmorazasanchez](https://github.com/dmorazasanchez/bc250-fsr4)**:
+  originated the BC250 FSR4 project and its initial performance improvements,
+  as acknowledged by the fork used here.
+- **[daniel-h-0 and contributors](https://github.com/daniel-h-0/bc250-fsr4-fork)**:
+  continued the BC250 work. This is the fork used directly as our reference
+  for FSR4 INT8 shader optimizations, provider tooling and reference workloads.
+  The audited revision is
+  [528f13b17e48bfba5b153f17ec4ebdfb3afa5bcb](https://github.com/daniel-h-0/bc250-fsr4-fork/commit/528f13b17e48bfba5b153f17ec4ebdfb3afa5bcb);
+  see [the source audit](docs/SOURCE_AUDIT.json).
+- **AMD / GPUOpen**: original FSR4 technology, shaders and model assets.
+
+BlackBearReloaded's work in this repository is the native PS5 adaptation,
+integration and validation. It does not claim authorship of FSR4 or the BC250
+optimizations. Upstream code, shaders, models and tools retain their respective
+copyright and license notices; this repository's GPL grant does not relicense
+those assets. Preserve their notices when adapting or distributing them.
+
 ## PS5 FSR4 working copy
 
 Modified by BlackBearReloaded, 2026-09-26. This repository imports
