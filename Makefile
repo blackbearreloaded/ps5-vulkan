@@ -543,9 +543,10 @@ build/libpsbc.host.a:
 .PHONY: fsr4-compile-probe
 fsr4-compile-probe: build/fsr4_compile_probe
 
-build/fsr4_compile_probe: tools/fsr4_compile_probe.c build/libpsbc.host.a
-	$(CC) -std=c11 -O2 -Wall -Wextra -Werror -Ithird_party/psbc-reference \
-		src/ps5_compiler_shims.c tools/fsr4_compile_probe.c \
+build/fsr4_compile_probe: tools/fsr4_compile_probe.c src/ps5vk_compiler.c build/libpsbc.host.a
+	$(CC) -std=c11 -O2 -Wall -Wextra -Werror $(VULKAN_CFLAGS) -Isrc -Iinclude \
+		-Ithird_party/opengnm/include -Ithird_party/psbc-reference \
+		src/ps5vk_compiler.c src/ps5_compiler_shims.c tools/fsr4_compile_probe.c \
 		build/libpsbc.host.a -lstdc++ -lm -lpthread -o $@
 .PHONY: test-runtime-header
 .PHONY: test-tessellation-compiler

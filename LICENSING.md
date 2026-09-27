@@ -52,6 +52,15 @@ Current derived or adapted files are:
 | `src/texture_layout.c` | `src/gallium/ps5/ps5_screen.c`, linear sampled-resource allocation | Descending, 256-byte-aligned GFX1013 mip-level packing and complete-chain-per-layer layout; ps5-vulkan supplies Vulkan mip bounds, transfer planning and memory-overflow gates |
 | `native/runtime_graphics_compiler.c`, `native/runtime_shader.c`, `native/runtime_draw_abi.h`, `native/draw_emit_ps5.c`, `src/graphics_formats.h` | `src/gallium/ps5/ps5_screen.c`, bounded PSBC texture-descriptor ABI, `ps5_integer_vertex_format` and `ps5_packed_vertex_format` | Vulkan-to-PSBC GFX1013 vertex formats plus the exact fragment set-0 combined-sampler metadata/user-SGPR bridge; unsupported descriptor profiles fail closed and explicit mip LOD has public-SDK-linked hardware readback |
 
+## PS5 FSR1 research reference
+
+[sainsaji/ps5-upscalar-research](https://github.com/sainsaji/ps5-upscalar-research)
+at commit `0321573fc9f88c681be30ecfe6892e2344cec86e` informed the hardware
+and capture checks in [docs/FSR1_REFERENCE.md](docs/FSR1_REFERENCE.md).
+No code, shader or image from that repository is copied here. Its example/tool
+code is GPL-3.0-or-later, and its FSR1 shader port carries AMD's MIT notice;
+preserve both where a future direct adaptation applies.
+
 ## Public AGC and logger support
 
 The SDK builder fetches
