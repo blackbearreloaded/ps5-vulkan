@@ -32,7 +32,7 @@
 #define CAP_UTEXEL PS5VK_FORMAT_CAP_UNIFORM_TEXEL_BUFFER
 #define CAP_STORAGE_IMAGE PS5VK_FORMAT_CAP_STORAGE_IMAGE
 #if PS5VK_FSR4_STORAGE_DIAGNOSTIC
-/* Private FSR4 image witnesses through 240x144; not a normal-profile promotion. */
+/* Private FSR4 target-size qualification; not a normal-profile promotion. */
 #define FSR4_STORAGE_CAP (CAP_STORAGE_IMAGE | CAP_SRC)
 #else
 #define FSR4_STORAGE_CAP 0u
@@ -409,7 +409,7 @@ VkExtent3D ps5vk_storage_image_max_extent(VkFormat format)
     if (!ps5vk_texture_format_witnessed(format, PS5VK_FORMAT_CAP_STORAGE_IMAGE))
         return (VkExtent3D){0,0,0};
 #if PS5VK_FSR4_STORAGE_DIAGNOSTIC
-    return (VkExtent3D){240,144,1};
+    return (VkExtent3D){1920,1080,1};
 #else
     return (VkExtent3D){8,8,1};
 #endif
