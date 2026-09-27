@@ -526,6 +526,10 @@ VKAPI_ATTR void VKAPI_CALL vkDestroyPipeline(VkDevice d, VkPipeline p, const VkA
         ps5vk_cache_entry_release(d->pipeline_cache, p->cache_entry);
         p->cache_entry = NULL;
     }
+    if (p->native_code_backing) {
+        d->memory.release(d->memory.context, p->native_code_backing);
+        p->native_code = p->native_code_backing = NULL;
+    }
     for (VkPipeline variant = p->topology_variant, next; variant; variant = next) {
         next = variant->topology_variant;
         VkAllocationCallbacks vsaved = variant->allocator; VkBool32 vcustom = variant->custom_allocator;

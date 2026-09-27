@@ -12,7 +12,11 @@
 #include <unistd.h>
 
 enum { COMMAND_BYTES = 131072, ALIGNMENT = 65536, MAX_DISPATCHES =
-       PS5VK_MAX_OPERATIONS * PS5VK_MAX_SUBMITTED_BUFFERS };
+       PS5VK_MAX_OPERATIONS * PS5VK_MAX_SUBMITTED_BUFFERS,
+       /* Control words live past the command stream: a chained stream of many
+        * dispatches must never reach the words its packets write. */
+       READBACK_OFFSET = COMMAND_BYTES - 0x100, LABEL_OFFSET = COMMAND_BYTES - 0x80,
+       STREAM_BYTES = COMMAND_BYTES - 0x200, WAIT_WORDS = 7 };
 struct prepared_dispatch {
     void *arena, *backing;
     size_t bytes, words, scratch_offset, scratch_bytes;
@@ -68,6 +72,52 @@ static void release(VkDevice device, void *opaque)
             device->memory.release(device->memory.context, job->dispatches[i].backing);
     free(job);
 }
+/* Bytes one dispatch takes from the tables arena: its set tables (at least the
+ * 512-byte anchor) followed by its push constants, on a 256-byte boundary. */
+static size_t dispatch_table_region(const struct ps5vk_compiled_program *program)
+{
+    size_t table_bytes = 0;
+    for (uint32_t set = 0; set < PS5VK_MAX_SETS; ++set)
+        if (program->descriptor_set_mask & (1u << set))
+            table_bytes += (ps5vk_compute_table_dwords(program, set) * 4 + 15) & ~(size_t)15;
+    if (table_bytes < 512) table_bytes = 512;
+    if (program->push_constant_size) table_bytes += PS5VK_MAX_PUSH_CONSTANT_BYTES;
+    return (table_bytes + 255) & ~(size_t)255;
+}
+/* Grow a device arena. A new scratch arena is zeroed once and fenced by guards
+ * that every job checks; its contents are never cleared per dispatch because
+ * spilled values are always written before they are read. */
+static VkResult ensure_arena(VkDevice device, struct ps5vk_device_arena *arena, size_t bytes, int guarded)
+{
+    if (arena->bytes >= bytes) return VK_SUCCESS;
+    if (arena->backing) device->memory.release(device->memory.context, arena->backing);
+    arena->address = arena->backing = NULL;
+    arena->bytes = 0;
+    /* Grow geometrically so a slowly increasing workload does not churn. */
+    size_t grown = bytes < SIZE_MAX / 2 ? bytes + bytes / 2 : bytes;
+    VkResult result = device->memory.allocate(device->memory.context, grown, &arena->address, &arena->backing);
+    if (result != VK_SUCCESS) return result;
+    arena->bytes = grown;
+    if (guarded) {
+        memset(arena->address, 0, grown);
+        memset(arena->address, 0xa5, PS5VK_SCRATCH_GUARD_BYTES);
+        memset((unsigned char *)arena->address + grown - PS5VK_SCRATCH_GUARD_BYTES, 0xa5,
+               PS5VK_SCRATCH_GUARD_BYTES);
+        cache(arena->address, grown);
+    }
+    return VK_SUCCESS;
+}
+static void check_scratch_guards(VkDevice device)
+{
+    const struct ps5vk_device_arena *arena = &device->compute_scratch;
+    if (!arena->bytes) return;
+    const uint8_t *low = arena->address;
+    const uint8_t *high = (const uint8_t *)arena->address + arena->bytes - PS5VK_SCRATCH_GUARD_BYTES;
+    cache(low, PS5VK_SCRATCH_GUARD_BYTES);
+    cache(high, PS5VK_SCRATCH_GUARD_BYTES);
+    for (size_t j = 0; j < PS5VK_SCRATCH_GUARD_BYTES; ++j)
+        if (low[j] != 0xa5 || high[j] != 0xa5) retain("scratch-guard-corruption");
+}
 static VkResult prepare(VkDevice device, const struct ps5vk_submission *submission, void **out)
 {
     *out = NULL;
@@ -86,6 +136,10 @@ static VkResult prepare(VkDevice device, const struct ps5vk_submission *submissi
     /* Partial mapping is not safe to unwind as though no mapping existed. */
     if (map_rc || processed != 1) retain("command-map-ambiguous");
     job->mapped = 1;
+    /* Pass 1: size the job. Shader code becomes resident per pipeline; tables,
+     * push constants and scratch come from device arenas reused by every job.
+     * Jobs are synchronous, so no earlier job still reads those arenas. */
+    size_t tables_needed = 0, scratch_needed = 0;
     for (unsigned b = 0; b < submission->count; ++b) {
         VkCommandBuffer cb = submission->buffers[b];
         uint32_t first = ps5vk_submission_first_operation(submission, b);
@@ -95,6 +149,48 @@ static VkResult prepare(VkDevice device, const struct ps5vk_submission *submissi
         }
         for (uint32_t i = first; i < first + count; ++i) {
             const struct ps5vk_operation *recorded = &cb->operations[i];
+            if (recorded->type == PS5VK_BARRIER) continue;
+            if (recorded->type != PS5VK_DISPATCH && !ps5vk_indirect_compute_operation(recorded->type)) {
+                result = VK_ERROR_FEATURE_NOT_PRESENT; goto fail;
+            }
+            VkPipeline pipeline = recorded->pipeline;
+            const struct ps5vk_compiled_program *program = &pipeline->program;
+            if (!program->code_words || program->code_words > 1024 * 1024) {
+                result = VK_ERROR_UNKNOWN; goto fail;
+            }
+            if (!pipeline->native_code) {
+                size_t code_bytes = program->code_words * 4;
+                result = device->memory.allocate(device->memory.context, code_bytes,
+                                                 &pipeline->native_code, &pipeline->native_code_backing);
+                if (result != VK_SUCCESS) goto fail;
+                memcpy(pipeline->native_code, program->code, code_bytes);
+                cache(pipeline->native_code, code_bytes);
+            }
+            tables_needed += dispatch_table_region(program);
+            if (program->scratch_bytes_per_wave) {
+                if ((program->scratch_bytes_per_wave & 1023u) ||
+                    program->scratch_bytes_per_wave > 8191u * 1024u) {
+                    result = VK_ERROR_UNKNOWN; goto fail;
+                }
+                size_t bytes = (size_t)(program->scratch_bytes_per_wave | 1024u) *
+                    PS5VK_COMPUTE_SCRATCH_WAVES;
+                if (bytes > scratch_needed) scratch_needed = bytes;
+            }
+        }
+    }
+    if ((result = ensure_arena(device, &device->compute_tables, tables_needed, 0)) != VK_SUCCESS ||
+        (scratch_needed &&
+         (result = ensure_arena(device, &device->compute_scratch,
+                                scratch_needed + 2 * PS5VK_SCRATCH_GUARD_BYTES, 1)) != VK_SUCCESS))
+        goto fail;
+    /* Pass 2: encode every dispatch against the arenas. */
+    size_t tables_used = 0;
+    for (unsigned b = 0; b < submission->count; ++b) {
+        VkCommandBuffer cb = submission->buffers[b];
+        uint32_t first = ps5vk_submission_first_operation(submission, b);
+        uint32_t count = ps5vk_submission_operation_count(submission, b);
+        for (uint32_t i = first; i < first + count; ++i) {
+            const struct ps5vk_operation *recorded = &cb->operations[i];
             struct ps5vk_operation resolved;
             const struct ps5vk_operation *op = recorded;
             if (ps5vk_indirect_compute_operation(recorded->type)) {
@@ -102,10 +198,9 @@ static VkResult prepare(VkDevice device, const struct ps5vk_submission *submissi
                 if (result != VK_SUCCESS) goto fail;
                 op = &resolved;
             }
-            /* Each dispatch is fully retired before the next. This is stronger
-             * than supported global host/compute barriers, not a skipped GPU
-             * dependency. Buffer ranges use this stronger global dependency;
-             * image transitions and queue-family transfers are not handled here. */
+            /* Dispatches retire in order (see launch); that is stronger than the
+             * supported global host/compute barriers, not a skipped dependency.
+             * Image transitions and queue-family transfers are not handled here. */
             if (op->type == PS5VK_BARRIER) continue;
             if (op->type != PS5VK_DISPATCH) {
                 result = VK_ERROR_FEATURE_NOT_PRESENT; goto fail;
@@ -113,11 +208,6 @@ static VkResult prepare(VkDevice device, const struct ps5vk_submission *submissi
             if (job->count == MAX_DISPATCHES) { result = VK_ERROR_UNKNOWN; goto fail; }
             struct prepared_dispatch *p = &job->dispatches[job->count++];
             const struct ps5vk_compiled_program *program = &op->pipeline->program;
-            if (!program->code_words || program->code_words > 1024 * 1024) {
-                result = VK_ERROR_UNKNOWN; goto fail;
-            }
-            size_t code_bytes = program->code_words * 4;
-            size_t table_offset = (code_bytes + 255) & ~(size_t)255;
             /* Each set's table is as long as the records the program reads
              * (up to PS5VK_MAX_DESCRIPTORS of them); the bootstrap template
              * still needs one mapped 512-byte anchor when no set is read. */
@@ -131,49 +221,32 @@ static VkResult prepare(VkDevice device, const struct ps5vk_submission *submissi
                 table_bytes += (set_dwords[set] * 4 + 15) & ~(size_t)15;
             }
             if (table_bytes < 512) table_bytes = 512;
-            size_t push_offset = table_offset + table_bytes;
-            p->bytes = push_offset + (program->push_constant_size ?
-                PS5VK_MAX_PUSH_CONSTANT_BYTES : 0);
-            if (program->scratch_bytes_per_wave) {
-                if ((program->scratch_bytes_per_wave & 1023u) ||
-                    program->scratch_bytes_per_wave > 8191u * 1024u) {
-                    result = VK_ERROR_UNKNOWN; goto fail;
-                }
-                p->scratch_bytes = (size_t)(program->scratch_bytes_per_wave | 1024u) *
-                    PS5VK_COMPUTE_SCRATCH_WAVES;
-                p->scratch_offset = ((p->bytes + 16383u) & ~(size_t)16383u) +
-                    PS5VK_SCRATCH_GUARD_BYTES;
-                p->bytes = p->scratch_offset + p->scratch_bytes + PS5VK_SCRATCH_GUARD_BYTES;
-                /* ponytail: one owned allocation per dispatch; share scratch after
-                 * measured graph memory pressure warrants a submission-wide arena. */
-            }
-            result = device->memory.allocate(device->memory.context, p->bytes, &p->arena, &p->backing);
-            if (result != VK_SUCCESS) goto fail;
-            memcpy(p->arena, program->code, code_bytes);
-            uint32_t *tables = (void *)((unsigned char *)p->arena + table_offset);
+            const size_t region = dispatch_table_region(program);
+            if (region > device->compute_tables.bytes - tables_used) { result = VK_ERROR_UNKNOWN; goto fail; }
+            unsigned char *base = (unsigned char *)device->compute_tables.address + tables_used;
+            tables_used += region;
+            uint32_t *tables = (void *)base;
             memset(tables, 0, table_bytes);
             struct ps5vk_dispatch_encoding encoding = {.program = program,
-                .addresses = {.code=(uintptr_t)p->arena,
+                .addresses = {.code=(uintptr_t)op->pipeline->native_code,
                     /* The bootstrap template requires a mapped table anchor
                      * even when the compiled shader uses no descriptor set.
                      * Its user-SGPR packet is replaced below. */
                     .descriptor_table=(uintptr_t)tables,
-                    .completion=(uintptr_t)job->command + 0x1100,
-                    .readback=(uintptr_t)job->command + 0xff4},
+                    .completion=(uintptr_t)job->command + LABEL_OFFSET,
+                    .readback=(uintptr_t)job->command + READBACK_OFFSET},
                 .completion_value = (job->serial << 32) | job->count};
-            if (p->scratch_bytes) {
-                uint8_t *scratch = (uint8_t *)p->arena + p->scratch_offset;
-                memset(scratch, 0, p->scratch_bytes);
-                memset(scratch - PS5VK_SCRATCH_GUARD_BYTES, 0xa5, PS5VK_SCRATCH_GUARD_BYTES);
-                memset(scratch + p->scratch_bytes, 0xa5, PS5VK_SCRATCH_GUARD_BYTES);
-                encoding.scratch = (uintptr_t)scratch;
+            if (program->scratch_bytes_per_wave) {
+                p->scratch_bytes = (size_t)(program->scratch_bytes_per_wave | 1024u) *
+                    PS5VK_COMPUTE_SCRATCH_WAVES;
+                encoding.scratch = (uintptr_t)device->compute_scratch.address + PS5VK_SCRATCH_GUARD_BYTES;
                 encoding.scratch_bytes = p->scratch_bytes;
             }
             if(program->push_constant_size) {
                 if(op->push_constant_size!=program->push_constant_size) {
                     result=VK_ERROR_UNKNOWN;goto fail;
                 }
-                void *push=(unsigned char *)p->arena+push_offset;
+                void *push=base+table_bytes;
                 memcpy(push,op->push_constants,program->push_constant_size);
                 encoding.push_constants=(uintptr_t)push;
             }
@@ -196,9 +269,9 @@ static VkResult prepare(VkDevice device, const struct ps5vk_submission *submissi
             p->words = ps5vk_dispatch_encode(p->packet + 8, PS5VK_COMPUTE_COMMAND_CAPACITY, &encoding);
             if (!p->words) { result = VK_ERROR_UNKNOWN; goto fail; }
             p->words += 8;
-            cache(p->arena, p->bytes);
         }
     }
+    if (tables_used) cache(device->compute_tables.address, tables_used);
     *out = job;
     ps5log_printf(PS5LOG_MARK, "PS5VK_QUEUE_PREPARED serial=%llu dispatches=%u",
                   (unsigned long long)job->serial, job->count);
@@ -210,50 +283,69 @@ fail:
 static VkResult launch(VkDevice device, void *opaque)
 {
     (void)device; struct native_job *job = opaque;
-    /* Synchronous conservative submission, not simulated execution. Each
-     * actual DCB must produce its own token before command memory is reused. */
-    for (unsigned i = 0; i < job->count; ++i) {
-        struct prepared_dispatch *p = &job->dispatches[i];
-        volatile uint64_t *label = (void *)((unsigned char *)job->command + 0x1100);
-        uint32_t *readback = (void *)((unsigned char *)job->command + 0xff4);
+    volatile uint64_t *label = (void *)((unsigned char *)job->command + LABEL_OFFSET);
+    uint32_t *readback = (void *)((unsigned char *)job->command + READBACK_OFFSET);
+    /* Chain as many dispatches as fit into one DCB. Each dispatch keeps its own
+     * cache acquire, CS partial flush and write-back RELEASE_MEM; before the next
+     * one the CP waits (WAIT_REG_MEM, as the graphics release path does) until
+     * that release wrote its token. This is the ordering the former one-DCB-per-
+     * dispatch loop obtained through a host round trip, without the round trip. */
+    for (unsigned first = 0; first < job->count;) {
         memset(job->command, 0, COMMAND_BYTES);
-        memcpy(job->command, p->packet, p->words * 4);
+        uint32_t *stream = job->command;
+        size_t words = 0;
+        unsigned last = first;
+        while (last < job->count) {
+            const struct prepared_dispatch *p = &job->dispatches[last];
+            const size_t need = p->words + (last > first ? WAIT_WORDS : 0);
+            if ((words + need) * 4 > STREAM_BYTES) break;
+            if (last > first) {
+                const uint64_t address = (uintptr_t)label;
+                const uint32_t wait[WAIT_WORDS] = {UINT32_C(0xc0053c00), UINT32_C(0x13),
+                    (uint32_t)address, (uint32_t)(address >> 32), last /* previous index + 1 */,
+                    UINT32_C(0xffffffff), 4};
+                memcpy(stream + words, wait, sizeof(wait));
+                words += WAIT_WORDS;
+            }
+            memcpy(stream + words, p->packet, p->words * 4);
+            words += p->words;
+            ++last;
+        }
+        if (last == first) return VK_ERROR_UNKNOWN;
         readback[3] = 0xdeadbeef;
         cache(job->command, COMMAND_BYTES);
-        struct ps5_agc_submit submit = {job->command, (uint32_t)p->words, 0, {0, 0, 0}};
+        struct ps5_agc_submit submit = {job->command, (uint32_t)words, 0, {0, 0, 0}};
         job->attempted = 1;
         struct ps5vk_submit_result result=ps5vk_submit_suspend(&submit);
         int rc = result.submit_rc;
-        ps5log_printf(PS5LOG_MARK, "PS5VK_QUEUE_SUBMIT serial=%llu index=%u rc=%d",
-                      (unsigned long long)job->serial, i, rc);
+        ps5log_printf(PS5LOG_MARK, "PS5VK_QUEUE_SUBMIT serial=%llu first=%u count=%u words=%zu rc=%d",
+                      (unsigned long long)job->serial, first, last - first, words, rc);
         if (rc) return VK_ERROR_DEVICE_LOST;
-        ps5log_printf(PS5LOG_MARK, "PS5VK_QUEUE_SUSPEND_POINT serial=%llu index=%u rc=%d",
-                      (unsigned long long)job->serial, i, result.suspend_rc);
         if (result.suspend_rc) return VK_ERROR_DEVICE_LOST;
-        uint64_t token = (job->serial << 32) | (i + 1);
+        const uint64_t token = (job->serial << 32) | last;
+        const uint64_t budget = UINT64_C(3000000000) + UINT64_C(100000000) * (last - first);
         uint64_t start = clock_ns(NULL);
         for (;;) {
             cache((const void *)label, 8);
             uint64_t observed = __atomic_load_n(label, __ATOMIC_ACQUIRE);
             if (observed == token) break;
-            if (observed || !start || clock_ns(NULL) - start > UINT64_C(3000000000))
+            /* Earlier dispatches of this chain legitimately publish lower tokens. */
+            if ((observed && (observed >> 32) != job->serial) ||
+                (uint32_t)observed > last || !start || clock_ns(NULL) - start > budget)
                 return VK_ERROR_DEVICE_LOST;
-            usleep(1000);
+            usleep(50);
         }
         cache(readback, 16);
         if (readback[3] != 0) return VK_ERROR_DEVICE_LOST;
-        ++job->completed;
-        if (p->scratch_bytes) {
-            const uint8_t *scratch = (const uint8_t *)p->arena + p->scratch_offset;
-            cache(scratch - PS5VK_SCRATCH_GUARD_BYTES, PS5VK_SCRATCH_GUARD_BYTES);
-            cache(scratch + p->scratch_bytes, PS5VK_SCRATCH_GUARD_BYTES);
-            for (size_t j = 0; j < PS5VK_SCRATCH_GUARD_BYTES; ++j)
-                if ((scratch - PS5VK_SCRATCH_GUARD_BYTES)[j] != 0xa5 ||
-                    scratch[p->scratch_bytes + j] != 0xa5)
-                    retain("scratch-guard-corruption");
+        int used_scratch = 0;
+        for (unsigned i = first; i < last; ++i) {
+            used_scratch |= job->dispatches[i].scratch_bytes != 0;
+            ++job->completed;
         }
-        ps5log_printf(PS5LOG_MARK, "PS5VK_QUEUE_COMPLETED serial=%llu index=%u token=%llx gcr=0070f528",
-                      (unsigned long long)job->serial, i, (unsigned long long)token);
+        if (used_scratch) check_scratch_guards(device);
+        ps5log_printf(PS5LOG_MARK, "PS5VK_QUEUE_COMPLETED serial=%llu first=%u count=%u token=%llx",
+                      (unsigned long long)job->serial, first, last - first, (unsigned long long)token);
+        first = last;
     }
     return VK_SUCCESS;
 }
