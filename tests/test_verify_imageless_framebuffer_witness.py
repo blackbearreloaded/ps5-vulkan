@@ -11,7 +11,7 @@ from verify_imageless_framebuffer_witness import validate  # noqa: E402
 class ImagelessFramebufferWitnessTests(unittest.TestCase):
     def setUp(self):
         self.artifact = {
-            "title": "PPSA99994", "profile": "imageless-framebuffer-witness",
+            "title": "PPSA88900", "profile": "imageless-framebuffer-witness",
             "submit_enabled": True, "files": {"eboot.bin": "a" * 64},
             "imageless_framebuffer": {
                 "feature": "VkPhysicalDeviceImagelessFramebufferFeatures.imagelessFramebuffer",
@@ -31,7 +31,7 @@ class ImagelessFramebufferWitnessTests(unittest.TestCase):
         ]
 
     def run_validation(self):
-        lines = ["HELLO ps5log/1 title=PPSA99994 app=ps5vk boot=123"]
+        lines = ["HELLO ps5log/1 title=PPSA88900 app=ps5vk boot=123"]
         lines.extend(f"{index}\t{index}\tMARK\t{message}"
                      for index, message in enumerate(self.messages, 1))
         lines.append(f"BYE seq={len(self.messages)} reason=consumer-imageless-framebuffer-end")
@@ -40,7 +40,7 @@ class ImagelessFramebufferWitnessTests(unittest.TestCase):
                    "bye": True, "gaps": [], "raw_lines": 0,
                    "sha256": hashlib.sha256(log).hexdigest(),
                    "last_seq": len(self.messages),
-                   "identity": {"title": "PPSA99994", "app": "ps5vk", "boot": "123"}}
+                   "identity": {"title": "PPSA88900", "app": "ps5vk", "boot": "123"}}
         return validate(log, receipt, self.artifact)
 
     def test_exact_run(self):

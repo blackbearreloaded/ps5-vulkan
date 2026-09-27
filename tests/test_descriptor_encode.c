@@ -172,6 +172,30 @@ int main(void)
         image_table,16)!=VK_SUCCESS);
     storage.images[0].imageLayout=VK_IMAGE_LAYOUT_GENERAL;
 
+#if PS5VK_FSR4_STORAGE_DIAGNOSTIC
+    const VkFormat fsr_formats[] = {VK_FORMAT_R32_UINT, VK_FORMAT_R32_SFLOAT,
+        VK_FORMAT_R8G8B8A8_UNORM, VK_FORMAT_R16G16B16A16_SFLOAT,
+        VK_FORMAT_R32G32B32A32_SFLOAT};
+    const struct VkImage_T saved_image = image;
+    for (unsigned n=0; n<sizeof(fsr_formats)/sizeof(fsr_formats[0]); ++n) {
+        const struct ps5vk_texture_format *format=ps5vk_texture_format_lookup(fsr_formats[n]);
+        image.info.format=image_view.format=fsr_formats[n];
+        image.info.extent=(VkExtent3D){191,144,1};
+        image.info.usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
+        uint32_t pitch; uint64_t bytes;
+        assert(!ps5vk_texture_row_layout(format->bytes_per_texel,191,144,&pitch,&bytes));
+        image.requirements.size=bytes;
+        assert(ps5vk_descriptor_encode(&device,&storage_program,0,&storage,dynamic,
+            image_table,16)==VK_SUCCESS);
+        assert(image_table[4]==pitch/format->bytes_per_texel-1);
+        assert((image_table[1]&0x3ff00000)==format->descriptor_format_word);
+        --image.requirements.size;
+        assert(ps5vk_descriptor_encode(&device,&storage_program,0,&storage,dynamic,
+            image_table,16)!=VK_SUCCESS);
+    }
+    image=saved_image;image_view.format=image.info.format;
+#endif
+
     /* VK_EXT_robustness2 nullDescriptor. Without the device feature a null
      * handle is refused before any word changes. With it, each null role is
      * an all-zero record of its own width, and the live records beside it are

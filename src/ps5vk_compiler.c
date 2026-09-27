@@ -194,6 +194,7 @@ static VkResult runtime_compile_compute_features(
         return VK_ERROR_FEATURE_NOT_PRESENT;
     opts.enable_storage_buffer_8bit_access =
         !!(feature_mask & PS5VK_FEATURE_STORAGE_BUFFER_8BIT);
+    opts.compute_buffer_spills = true;
     opts.enable_int8 = !!(feature_mask & PS5VK_FEATURE_SHADER_INT8_COMPUTE);
     opts.enable_storage_buffer_16bit_access =
         !!(feature_mask & PS5VK_FEATURE_STORAGE_BUFFER_16BIT);
@@ -315,8 +316,7 @@ static VkResult runtime_compile_compute_features(
     uint32_t rsrc1 = csh->registers.computepgmrsrc1;
     uint32_t rsrc2 = csh->registers.computepgmrsrc2;
 
-    /* LDS is allocated by hardware from LDS_SIZE; scratch still requires a
-     * backing allocation and remains unsupported. Preserve compiler sizing. */
+    /* Preserve compiler LDS and scratch sizing; the native queue owns backing. */
     uint32_t lds_size = (rsrc2 >> 15) & 0x1ffu;
     uint32_t user_sgprs = (rsrc2 >> 1) & 0x1fu;
     uint32_t expected_set_mask=0;
@@ -339,7 +339,13 @@ static VkResult runtime_compile_compute_features(
     if (expects_push) ++base_user_sgprs;
     /* Pinned RADV compute arguments: ring offsets, one direct 32-bit pointer
      * per used set, then optional inline grid dimensions. */
-    if ((rsrc2 & 1u) || out.metadata.scratch_valid || lds_size > 128 ||
+    if (!!(rsrc2 & 1u) != !!out.metadata.scratch_valid ||
+        (!!out.metadata.scratch_bytes_per_wave != !!out.metadata.scratch_valid) ||
+        (out.metadata.scratch_valid &&
+         ((out.metadata.scratch_bytes_per_wave & 1023u) ||
+          out.metadata.scratch_bytes_per_wave > 8191u * 1024u ||
+          out.metadata.scratch_buffer_table_user_data_dword != 0)) ||
+        lds_size > 128 ||
         (user_sgprs != base_user_sgprs && user_sgprs != base_user_sgprs+3)) {
         psbc_free_output(&out);
         return VK_ERROR_FEATURE_NOT_PRESENT;
@@ -415,6 +421,7 @@ static VkResult runtime_compile_compute_features(
     for(uint32_t set=0;set<PS5VK_MAX_SETS;++set)
         out_program->descriptor_set_sgpr[set]=out.metadata.descriptor_set_user_data_dword[set];
     out_program->lds_size = lds_size;
+    out_program->scratch_bytes_per_wave = out.metadata.scratch_bytes_per_wave;
     out_program->tgid[0] = (rsrc2 >> 7) & 1u;
     out_program->tgid[1] = (rsrc2 >> 8) & 1u;
     out_program->tgid[2] = (rsrc2 >> 9) & 1u;

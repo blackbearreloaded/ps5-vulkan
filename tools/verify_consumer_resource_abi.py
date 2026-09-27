@@ -12,7 +12,7 @@ import json
 from pathlib import Path
 
 
-TITLE = "PPSA99994"
+TITLE = "PPSA88900"
 APP = "ps5vk"
 
 # Shader draw parameters as the promoted contract defines them: BaseVertex,

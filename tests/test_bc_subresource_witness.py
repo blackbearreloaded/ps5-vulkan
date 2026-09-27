@@ -216,7 +216,7 @@ class BCSubresourceVerifierTests(unittest.TestCase):
         self.contract = generate('bc1-mip')[-1]
         self.contract.update(vert_spirv_sha256='1'*64, frag_spirv_sha256='2'*64)
         c = self.contract
-        self.artifact = dict(title='PPSA99994',profile='bc-subresource-witness',submit_enabled=True,
+        self.artifact = dict(title='PPSA88900',profile='bc-subresource-witness',submit_enabled=True,
                              files={'eboot.bin':'a'*64},bc_subresource=c)
         self.messages = [PREFIX+'FEATURE textureCompressionBC=1 enabled_by_features2=1',
             PREFIX+f"START profile=bc1-mip format=131 image=13x9 mips=4 layers=3 mip=1 layer=2 input_sha256={c['input_sha256']} raw_reference_sha256={c['raw_reference_sha256']} reference_sha256={c['reference_sha256']}",
@@ -229,12 +229,12 @@ class BCSubresourceVerifierTests(unittest.TestCase):
             'PS5VK_READY_FOR_SHELL_CLOSE resources_retired=1']
 
     def evidence(self):
-        lines = ['HELLO ps5log/1 title=PPSA99994 app=ps5vk boot=123']
+        lines = ['HELLO ps5log/1 title=PPSA88900 app=ps5vk boot=123']
         lines += [f'{i}\t{i}\tMARK\t{m}' for i,m in enumerate(self.messages,1)]
         lines += [f'BYE seq={len(self.messages)} reason=consumer-bc-subresource-end']
         log = ('\n'.join(lines)+'\n').encode()
         receipt = dict(protocol='ps5log/1',transport='tcp',clean=True,bye=True,gaps=[],raw_lines=0,
-                       identity=dict(title='PPSA99994',app='ps5vk',boot='123'),
+                       identity=dict(title='PPSA88900',app='ps5vk',boot='123'),
                        last_seq=len(self.messages),sha256=hashlib.sha256(log).hexdigest())
         return log, receipt
 

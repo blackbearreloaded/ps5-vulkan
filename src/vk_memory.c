@@ -644,12 +644,7 @@ VKAPI_ATTR VkResult VKAPI_CALL vkCreateImage(VkDevice d, const VkImageCreateInfo
         (ps5vk_format_aspects(info->format) != VK_IMAGE_ASPECT_COLOR_BIT ?
          (info->usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT) :
          (info->usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT))) return INVALID;
-    if ((info->usage & VK_IMAGE_USAGE_STORAGE_BIT) &&
-        (info->format != VK_FORMAT_R32_UINT || info->imageType != VK_IMAGE_TYPE_2D ||
-         info->extent.width > 8 || info->extent.height > 8 ||
-         info->mipLevels != 1 || info->arrayLayers != 1 ||
-         info->usage != (VK_IMAGE_USAGE_STORAGE_BIT |
-             VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT)))
+    if ((info->usage & VK_IMAGE_USAGE_STORAGE_BIT) && !ps5vk_storage_image_info(info))
         return VK_ERROR_FORMAT_NOT_SUPPORTED;
     /* The backend owns format/usage support. Keeping a second format whitelist
      * here made newly validated native formats impossible to create even when

@@ -3161,7 +3161,7 @@ int main(void)
         _exit(0);
     }
     cfg.udp = 0;
-    if (ps5log_init(&cfg, "PPSA99994", "ps5vk", boot)) {
+    if (ps5log_init(&cfg, "PPSA88900", "ps5vk", boot)) {
         _exit(0);
     }
 

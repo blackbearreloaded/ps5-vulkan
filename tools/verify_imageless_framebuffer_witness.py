@@ -10,7 +10,7 @@ def _require(condition, label):
 
 
 def validate(log, receipt, artifact):
-    _require(artifact.get("title") == "PPSA99994" and
+    _require(artifact.get("title") == "PPSA88900" and
              artifact.get("profile") == "imageless-framebuffer-witness" and
              artifact.get("submit_enabled") is True, "artifact profile")
     digest = artifact.get("files", {}).get("eboot.bin", "")
@@ -27,7 +27,7 @@ def validate(log, receipt, artifact):
         "format": "VK_FORMAT_R8G8B8A8_UNORM",
         "pixels_per_view": 4096,
     }, "artifact contract")
-    messages = validate_stream(log, receipt, "consumer-imageless-framebuffer-end")
+    messages = validate_stream(log, receipt, "consumer-imageless-framebuffer-end", title="PPSA88900")
 
     def exactly(marker):
         _require(messages.count(marker) == 1, marker)

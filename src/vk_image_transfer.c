@@ -97,7 +97,8 @@ VkBool32 ps5vk_image_transfer_operation(enum ps5vk_operation_type type)
  * bit. Both are the same padded linear layout. */
 static int transfer_role_source(VkImage image)
 {
-    return (ps5vk_pure_transfer_image(image) || ps5vk_storage_image(image)) &&
+    return (ps5vk_pure_transfer_image(image) ||
+            (ps5vk_storage_image(image) && ps5vk_texture_format_lookup(image->info.format)->bytes_per_texel == 4)) &&
         (image->info.usage & VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
 }
 static int transfer_role_destination(VkImage image)
@@ -106,7 +107,7 @@ static int transfer_role_destination(VkImage image)
      * declares a transfer destination: both are padded linear memory, and the
      * clear below fills either of them the same way. */
     return (ps5vk_pure_transfer_image(image) || ps5vk_colour_transfer_image(image) ||
-            ps5vk_storage_image(image)) &&
+            (ps5vk_storage_image(image) && ps5vk_texture_format_lookup(image->info.format)->bytes_per_texel == 4)) &&
         (image->info.usage & VK_IMAGE_USAGE_TRANSFER_DST_BIT);
 }
 
@@ -181,7 +182,8 @@ enum ps5vk_image_domain ps5vk_image_domain(const struct ps5vk_operation *op)
         return (ps5vk_d32_gather_image(op->copy_image) ||
                 ps5vk_bc_linear_image(op->copy_image) ||
                 ps5vk_rgba_linear_image(op->copy_image) ||
-                ps5vk_colour_transfer_image(op->copy_image)) ?
+                ps5vk_colour_transfer_image(op->copy_image) ||
+                ps5vk_storage_image(op->copy_image)) ?
             PS5VK_IMAGE_DOMAIN_LINEAR : PS5VK_IMAGE_DOMAIN_NONE;
     case PS5VK_COPY_IMAGE_BUFFER:
         return (ps5vk_bc_linear_image(op->copy_image) ||
@@ -564,7 +566,8 @@ VKAPI_ATTR void VKAPI_CALL vkCmdClearColorImage(VkCommandBuffer c, VkImage image
     /* RGBA8 UNORM clear values must be finite [0,1] floats; reuse the render
      * pass clear conversion so both paths agree on the byte encoding. */
     uint32_t word = 0;
-    if (ps5vk_storage_image(image)) word = color->uint32[0];
+    if (ps5vk_storage_image(image) && (image->info.format == VK_FORMAT_R32_UINT ||
+        image->info.format == VK_FORMAT_R32_SFLOAT)) word = color->uint32[0];
     else if (!(image->info.format == VK_FORMAT_B8G8R8A8_UNORM ?
                ps5vk_color_clear_bgra8(color->float32, &word) :
                ps5vk_color_clear_rgba8(color->float32, &word))) {
@@ -997,9 +1000,7 @@ VkResult ps5vk_image_linear_validate(VkDevice d, const struct ps5vk_operation *o
         } else if (ps5vk_bc_linear_image(b->image) || ps5vk_rgba_linear_image(b->image)) {
             if (!ps5vk_linear_image_barrier(b)) return INVALID;
         } else if (ps5vk_storage_image(b->image)) {
-            if (b->oldLayout != VK_IMAGE_LAYOUT_UNDEFINED ||
-                b->newLayout != VK_IMAGE_LAYOUT_GENERAL || b->srcAccessMask ||
-                b->dstAccessMask != VK_ACCESS_TRANSFER_WRITE_BIT) return INVALID;
+            if (!ps5vk_linear_image_barrier(b)) return INVALID;
         } else if (ps5vk_linear_staging_image(b->image)) {
             /* The linear staging image has exactly the two transitions the
              * pinned readback records: UNDEFINED to GENERAL for the transfer
@@ -1127,7 +1128,7 @@ VkResult ps5vk_image_linear_validate(VkDevice d, const struct ps5vk_operation *o
     /* The upload direction also accepts the colour-attachment shape that
      * declares a transfer destination; the readback direction does not. */
     const int padded_role = ps5vk_bc_linear_image(op->copy_image) ||
-        ps5vk_rgba_linear_image(op->copy_image);
+        ps5vk_rgba_linear_image(op->copy_image) || ps5vk_storage_image(op->copy_image);
     const int image_role = op->type == PS5VK_COPY_BUFFER_IMAGE ?
         (padded_role || ps5vk_pure_transfer_image(op->copy_image) ||
          ps5vk_colour_transfer_image(op->copy_image)) :
@@ -1170,8 +1171,12 @@ VkResult ps5vk_image_linear_validate(VkDevice d, const struct ps5vk_operation *o
 VkResult ps5vk_image_linear_region_validate(VkImage image, const VkBufferImageCopy *region,
     VkDeviceSize buffer_bytes, VkDeviceSize image_bytes)
 {
+    if (ps5vk_storage_image(image)) {
+        struct ps5vk_texture_copy plan;
+        return ps5vk_texture_copy_plan_for_image(image, buffer_bytes, image_bytes, region, &plan);
+    }
     struct linear_copy plan;
-    if (!(ps5vk_pure_transfer_image(image) || ps5vk_storage_image(image)) || !region)
+    if (!ps5vk_pure_transfer_image(image) || !region)
         return INVALID;
     return linear_region_plan(image->info.extent.width, image->info.extent.height,
         buffer_bytes, image_bytes, region, &plan) ? INVALID : VK_SUCCESS;
@@ -1463,7 +1468,8 @@ VkResult ps5vk_image_linear_execute(VkDevice d, const struct ps5vk_operation *op
         ps5vk_buffer_span(d, op->type == PS5VK_COPY_BUFFER_IMAGE ? op->copy_source : op->copy_destination,
             0, VK_WHOLE_SIZE, &buffer_address, &buffer_bytes) != VK_SUCCESS)
         return VK_ERROR_DEVICE_LOST;
-    if (ps5vk_bc_linear_image(op->copy_image) || ps5vk_rgba_linear_image(op->copy_image)) {
+    if (ps5vk_bc_linear_image(op->copy_image) || ps5vk_rgba_linear_image(op->copy_image) ||
+        ps5vk_storage_image(op->copy_image)) {
         struct ps5vk_texture_copy plan;
         if (ps5vk_texture_copy_plan_for_image(op->copy_image, buffer_bytes,
                 image_bytes, &op->copy_region, &plan) != VK_SUCCESS ||

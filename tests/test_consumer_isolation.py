@@ -29,9 +29,11 @@ class TestConsumerIsolation(unittest.TestCase):
 
         for h in headers:
             hp = Path(h).resolve()
-            is_sdk = str(hp).startswith(str(DIST_SDK / "include"))
-            is_local = str(hp).startswith(str(CONSUMER_DIR))
-            is_crt = "ps5-native-app-boilerplate" in str(hp) or str(hp).startswith("/usr/")
+            is_sdk = hp.is_relative_to(DIST_SDK / "include")
+            is_local = hp.is_relative_to(CONSUMER_DIR)
+            is_crt = hp.is_relative_to(Path("/usr"))
+            if os.environ.get("PS5_PAYLOAD_SDK"):
+                is_crt |= hp.is_relative_to(Path(os.environ["PS5_PAYLOAD_SDK"]).resolve() / "target/include")
             self.assertTrue(
                 is_sdk or is_local or is_crt,
                 f"Isolation violation: consumer depends on unauthorized header {hp}"

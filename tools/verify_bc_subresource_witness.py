@@ -9,7 +9,7 @@ PREFIX = 'PS5VK_CONSUMER_BC_SUBRESOURCE_'
 
 
 def validate(log, receipt, artifact):
-    _require(artifact.get('title') == 'PPSA99994' and artifact.get('profile') == PROFILE and
+    _require(artifact.get('title') == 'PPSA88900' and artifact.get('profile') == PROFILE and
              artifact.get('submit_enabled') is True, 'BC subresource artifact profile')
     contract = artifact.get('bc_subresource', {})
     _require(contract.get('profile') in PROFILES, 'BC subresource profile')
@@ -22,7 +22,7 @@ def validate(log, receipt, artifact):
     hashes = [digest] + [contract.get(key, '') for key in ('vert_spirv_sha256', 'frag_spirv_sha256')]
     _require(all(isinstance(value, str) and re.fullmatch('[0-9a-f]{64}', value) for value in hashes),
              'BC subresource artifact hashes')
-    messages = validate_stream(log, receipt, 'consumer-bc-subresource-end')
+    messages = validate_stream(log, receipt, 'consumer-bc-subresource-end', title="PPSA88900")
     # validate_stream checks data-record sequence numbers; also pin the final
     # BYE sequence to the receiver's final sequence, rather than only its reason.
     _require(log.decode().splitlines()[-1] ==

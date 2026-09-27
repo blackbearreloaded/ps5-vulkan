@@ -36,7 +36,7 @@ class ProbeFixture:
         matrix_path = ROOT / "conformance_inventory/dxvk_v262_matrix.json"
         self.manifest = root / "artifact.json"
         self.manifest.write_text(json.dumps({
-            "title": "PPSA99994", "profile": "dxvk-v262-capability-probe",
+            "title": "PPSA88900", "profile": "dxvk-v262-capability-probe",
             "submit_enabled": False,
             "files": {"eboot.bin": hashlib.sha256(self.eboot.read_bytes()).hexdigest()},
             "dxvk": {
@@ -67,7 +67,7 @@ class ProbeFixture:
         self.write(records)
 
     def write(self, records):
-        lines = ["HELLO ps5log/1 title=PPSA99994 app=ps5vk boot=0x1234 tag=dxvk"]
+        lines = ["HELLO ps5log/1 title=PPSA88900 app=ps5vk boot=0x1234 tag=dxvk"]
         lines += [f"{seq}\t{1000 + seq}\tMARK\t{record}"
                   for seq, record in enumerate(records, 1)]
         lines.append(f"BYE seq={len(records)} reason=dxvk262-capability-probe")
@@ -77,7 +77,7 @@ class ProbeFixture:
             "protocol": "ps5log/1", "transport": "tcp", "clean": True,
             "bye": True, "gaps": [], "records": len(records),
             "sha256": hashlib.sha256(data).hexdigest(),
-            "identity": {"title": "PPSA99994", "app": "ps5vk", "boot": "0x1234"},
+            "identity": {"title": "PPSA88900", "app": "ps5vk", "boot": "0x1234"},
         }))
 
     def validate(self):

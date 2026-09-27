@@ -540,10 +540,12 @@ build/libpsbc.host.a:
 
 # Compile captured FSR4 SPIR-V against the pinned PS5 compiler on the host.
 # Source extraction is explicit: the BC250 capsule is a separate upstream input.
-.PHONY: fsr4-compile-probe fsr4-family-inventory fsr4-provider-inventory fsr4-poststage-audit
+.PHONY: fsr4-compile-probe fsr4-family-inventory fsr4-provider-inventory fsr4-poststage-audit fsr4-initializers
 fsr4-compile-probe: build/fsr4_compile_probe
 fsr4-family-inventory: fsr4-compile-probe
 	$(PYTHON) tools/fsr4_compile_inventory.py
+fsr4-initializers:
+	$(PYTHON) tools/fsr4_initializers.py
 fsr4-provider-inventory:
 	$(PYTHON) tools/fsr4_provider_inventory.py
 fsr4-poststage-audit:
@@ -716,3 +718,24 @@ check-bc-subresource-copy:
 	mkdir -p build/tests
 	$(CC) -std=c11 -Wall -Wextra -Werror $(VULKAN_CFLAGS) -Isrc $(VK_DEVICE_SOURCES) src/platform_host.c src/depth_layout.c native/image_ps5.c tests/test_bc_subresource_copy.c -o build/tests/test_bc_subresource_copy
 	./build/tests/test_bc_subresource_copy
+
+# Offline converter for the exact captured shaders. This dependency is host-only.
+DXIL_SPIRV_DIR ?= ../references/dxil-spirv
+.PHONY: fsr4-dxil-converter
+fsr4-dxil-converter:
+	test "$$(git -C "$(DXIL_SPIRV_DIR)" rev-parse HEAD)" = f2d1b5541eac934e9c32e8aa664328915336a213
+	python3 tools/prepare_fsr4_converter.py "$(DXIL_SPIRV_DIR)"
+	cmake -S "$(DXIL_SPIRV_DIR)" -B build/dxil-spirv -G Ninja -DCMAKE_BUILD_TYPE=Release -DSPIRV_SKIP_TESTS=ON -DCMAKE_CXX_FLAGS=-DPS5_FSR4_REFERENCE_FP16=1
+	cmake --build build/dxil-spirv --target dxil-spirv-c-shared -j 4
+	$(CC) -std=c11 -O2 -Wall -Wextra -Werror -I"$(DXIL_SPIRV_DIR)" \
+		tools/fsr4_dxil_to_spirv.c -Lbuild/dxil-spirv -ldxil-spirv-c-shared \
+		-Wl,-rpath,'$$ORIGIN/dxil-spirv' -o build/fsr4_dxil_to_spirv
+	build/fsr4_dxil_to_spirv --self-test
+
+.PHONY: test-fsr4-storage
+test-fsr4-storage:
+	mkdir -p build/tests
+	$(CC) -std=c11 -g -Wall -Wextra -Werror -fsanitize=address,undefined -DPS5VK_FSR4_STORAGE_DIAGNOSTIC=1 $(VULKAN_CFLAGS) -Isrc src/descriptor_encode.c src/texture_format.c src/texture_descriptor.c src/texture_layout.c src/depth_layout.c tests/test_descriptor_encode.c -o build/tests/test_fsr4_descriptor
+	./build/tests/test_fsr4_descriptor
+	$(CC) -std=c11 -g -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer -DPS5VK_FSR4_STORAGE_DIAGNOSTIC=1 $(VULKAN_CFLAGS) -Isrc $(VK_DEVICE_SOURCES) src/platform_host.c src/depth_layout.c native/image_ps5.c tests/test_image_copy_clear.c -o build/tests/test_fsr4_image_copy
+	./build/tests/test_fsr4_image_copy

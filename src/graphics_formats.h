@@ -179,11 +179,10 @@ static inline VkResult ps5vk_graphics_image_properties(VkFormat format,
     if(tiling!=VK_IMAGE_TILING_OPTIMAL || !budget ||
        !ps5vk_graphics_image_usage_with_flags(format,type,tiling,usage,flags))
         return VK_ERROR_FORMAT_NOT_SUPPORTED;
-    if (format == VK_FORMAT_R32_UINT && type == VK_IMAGE_TYPE_2D && !flags &&
-        usage == (VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
-                  VK_IMAGE_USAGE_TRANSFER_DST_BIT)) {
-        *out = (VkImageFormatProperties){.maxExtent={8,8,1},.maxMipLevels=1,
-            .maxArrayLayers=1,.sampleCounts=VK_SAMPLE_COUNT_1_BIT,
+    if (ps5vk_storage_image_usage(format, usage)) {
+        if (type != VK_IMAGE_TYPE_2D || flags) return VK_ERROR_FORMAT_NOT_SUPPORTED;
+        *out = (VkImageFormatProperties){.maxExtent=ps5vk_storage_image_max_extent(format),
+            .maxMipLevels=1,.maxArrayLayers=1,.sampleCounts=VK_SAMPLE_COUNT_1_BIT,
             .maxResourceSize=budget};
         return VK_SUCCESS;
     }

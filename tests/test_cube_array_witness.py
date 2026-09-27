@@ -13,7 +13,7 @@ class CubeArrayWitnessTests(unittest.TestCase):
         self.vertex_hash = "a" * 64
         self.fragment_hash = "b" * 64
         self.artifact = {
-            "title": "PPSA99994",
+            "title": "PPSA88900",
             "profile": "image-cube-array-witness",
             "submit_enabled": True,
             "files": {"eboot.bin": "c" * 64},
@@ -43,7 +43,7 @@ class CubeArrayWitnessTests(unittest.TestCase):
             "PS5VK_CONSUMER_RESOURCES_RETIRED zero_tracked_allocations=1",
             "PS5VK_READY_FOR_SHELL_CLOSE resources_retired=1",
         ]
-        log_lines = ["HELLO ps5log/1 title=PPSA99994 app=ps5vk boot=123"]
+        log_lines = ["HELLO ps5log/1 title=PPSA88900 app=ps5vk boot=123"]
         log_lines.extend(f"{index}\t{index}\tMARK\t{message}"
                          for index, message in enumerate(self.messages, 1))
         log_lines.append(
@@ -58,7 +58,7 @@ class CubeArrayWitnessTests(unittest.TestCase):
             "raw_lines": 0,
             "sha256": hashlib.sha256(self.log).hexdigest(),
             "last_seq": len(self.messages),
-            "identity": {"title": "PPSA99994", "app": "ps5vk", "boot": "123"},
+            "identity": {"title": "PPSA88900", "app": "ps5vk", "boot": "123"},
         }
 
     def test_exact_two_cube_six_face_run_is_accepted(self):
@@ -91,7 +91,7 @@ class CubeArrayWitnessTests(unittest.TestCase):
             validate(self.log, self.receipt, self.artifact)
         self.messages.insert(2,
             "PS5VK_CONSUMER_CUBE_ARRAY_SOURCE kind=tiled_attachment rendered_layers=12")
-        lines = ["HELLO ps5log/1 title=PPSA99994 app=ps5vk boot=123"]
+        lines = ["HELLO ps5log/1 title=PPSA88900 app=ps5vk boot=123"]
         lines.extend(f"{index}\t{index}\tMARK\t{message}"
                      for index, message in enumerate(self.messages, 1))
         lines.append(f"BYE seq={len(self.messages)} reason=consumer-cube-array-end")

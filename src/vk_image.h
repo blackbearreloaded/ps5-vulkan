@@ -218,6 +218,7 @@ static inline int ps5vk_linear_layout_access(VkImage image, VkImageLayout layout
     if (usage & VK_IMAGE_USAGE_TRANSFER_SRC_BIT) allowed |= VK_ACCESS_TRANSFER_READ_BIT;
     if (usage & VK_IMAGE_USAGE_TRANSFER_DST_BIT) allowed |= VK_ACCESS_TRANSFER_WRITE_BIT;
     if (usage & VK_IMAGE_USAGE_SAMPLED_BIT) allowed |= VK_ACCESS_SHADER_READ_BIT;
+    if (usage & VK_IMAGE_USAGE_STORAGE_BIT) allowed |= VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
     switch (layout) {
     case VK_IMAGE_LAYOUT_UNDEFINED: return !destination && !access;
     case VK_IMAGE_LAYOUT_GENERAL: break;
@@ -242,16 +243,10 @@ static inline int ps5vk_linear_image_barrier(const VkImageMemoryBarrier *b)
         ps5vk_linear_layout_access(b->image, b->oldLayout, b->srcAccessMask, 0) &&
         ps5vk_linear_layout_access(b->image, b->newLayout, b->dstAccessMask, 1);
 }
-/* R32_UINT UAV with the same padded row layout as a one-level texture. */
+/* Storage images share the format table's one-level padded-linear contract. */
 static inline VkBool32 ps5vk_storage_image(VkImage image)
 {
-    return image && image->info.format == VK_FORMAT_R32_UINT &&
-        image->info.imageType == VK_IMAGE_TYPE_2D &&
-        image->info.mipLevels == 1 && image->info.arrayLayers == 1 &&
-        image->info.extent.depth == 1 && image->info.samples == VK_SAMPLE_COUNT_1_BIT &&
-        image->info.tiling == VK_IMAGE_TILING_OPTIMAL &&
-        image->info.usage == (VK_IMAGE_USAGE_STORAGE_BIT |
-            VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT);
+    return image && ps5vk_storage_image_info(&image->info);
 }
 static inline VkBool32 ps5vk_linear_staging_image(VkImage image)
 {

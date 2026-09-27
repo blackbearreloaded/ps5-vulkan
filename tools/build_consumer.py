@@ -76,15 +76,37 @@ RASTER_CASES = (
 )
 RASTER_EXTENT = 64
 sys.path.insert(0, str(ROOT / "tools"))
-from lab import lab_root  # noqa: E402
+from build_sdk import get_public_ps5_toolchain  # noqa: E402
+from prepare_native_deps import GEARS  # noqa: E402
 
 DIST_SDK = ROOT / "dist-sdk"
 CONSUMER_DIR = ROOT / "examples/native_consumer"
 BUILD_DIR = CONSUMER_DIR / "build"
-DIST_DIR = ROOT / "dist-consumer/PPSA99994"
+DIST_DIR = ROOT / "dist-consumer/PPSA88900"
 
 
-def check_isolation(dep_file: Path, obj_file: Path):
+def native_inputs():
+    """Resolve public inputs before creating or replacing native artifacts."""
+    foundation = Path(os.environ.get(
+        "PS5_NATIVE_APP_TEMPLATE", ROOT.parent / "ps5-native-app-boilerplate"
+    )).expanduser().resolve()
+    sdk, compiler = get_public_ps5_toolchain()
+    builder = foundation / "build/host/ps5-native-tool"
+    required = [builder, foundation / "tooling/native/app_crt.cpp",
+                foundation / "runtime/libc.prx", foundation / "sce_sys/icon0.png",
+                GEARS["dest"] / "sce_sys/param.json"]
+    if sdk:
+        required += [sdk / "bin/prospero-clang++", sdk / "bin/prospero-lld"]
+    missing = [str(path) for path in required if not path.is_file()]
+    if not sdk or not compiler:
+        missing.insert(0, "PS5_PAYLOAD_SDK native compiler")
+    if missing:
+        raise SystemExit("Native consumer inputs missing: " + ", ".join(missing) +
+                         "; set PS5_PAYLOAD_SDK and PS5_NATIVE_APP_TEMPLATE")
+    return foundation, sdk, compiler, builder, GEARS["dest"]
+
+
+def check_isolation(dep_file: Path, obj_file: Path, payload_sdk=None):
     """Verify that consumer depends only on public SDK and standard CRT headers/symbols."""
     print("Checking consumer header isolation in", dep_file)
     content = dep_file.read_text()
@@ -96,14 +118,16 @@ def check_isolation(dep_file: Path, obj_file: Path):
         # Header must be in:
         # - dist-sdk/include
         # - examples/native_consumer
-        # - third_party/ps5-native-app-boilerplate/... (toolchain / system libc headers)
-        is_sdk = str(hp).startswith(str(DIST_SDK / "include"))
-        is_local = str(hp).startswith(str(CONSUMER_DIR))
-        is_crt = "ps5-native-app-boilerplate" in str(hp) or str(hp).startswith("/usr/")
+        # - configured payload SDK and system libc headers
+        is_sdk = hp.is_relative_to((DIST_SDK / "include").resolve())
+        is_local = hp.is_relative_to(CONSUMER_DIR.resolve())
+        is_crt = hp.is_relative_to(Path("/usr"))
+        if payload_sdk is not None:
+            is_crt |= hp.is_relative_to(Path(payload_sdk).resolve() / "target/include")
         if not (is_sdk or is_local or is_crt):
             raise AssertionError(f"Isolation violation: consumer includes forbidden private header {hp}")
         # Explicit check: cannot include anything from src/ or native/
-        if str(ROOT / "src") in str(hp) or str(ROOT / "native") in str(hp):
+        if hp.is_relative_to(ROOT / "src") or hp.is_relative_to(ROOT / "native"):
             raise AssertionError(f"Isolation violation: consumer includes private source header {hp}")
 
     print("Header isolation verified: zero private project headers included.")
@@ -203,6 +227,18 @@ def main():
         parser.error("Wider sampler visibility requires --shared-stage-samplers")
     sampler_visibility = {"vertex-fragment": 0x11, "all-graphics": 0x1f, "all": 0x7fffffff}[args.sampler_visibility]
 
+    if args.check_only:
+        dep_file, obj_file = BUILD_DIR / "main.d", BUILD_DIR / "main.o"
+        if not dep_file.is_file() or not obj_file.is_file():
+            sys.exit("Cannot check isolation: object or dependency file missing. Run build first.")
+        check_isolation(dep_file, obj_file, os.environ.get("PS5_PAYLOAD_SDK"))
+        return
+
+    foundation, sdk, compiler, builder, gears = native_inputs()
+    subprocess.run([sys.executable, str(ROOT / "tools/prepare_native_deps.py"),
+                    "--check"], check=True)
+    linker = sdk / "bin/prospero-lld"
+
     # A merely present archive may predate the source tree.  Fresh staging is
     # the safe default for a standalone consumer and prevents false link
     # failures (or, worse, validation against yesterday's implementation).
@@ -211,14 +247,6 @@ def main():
         build_env = dict(os.environ)
         subprocess.run([sys.executable, str(ROOT / "tools/build_sdk.py")],
                        env=build_env, check=True)
-
-    lab = lab_root()
-    foundation = lab / "third_party/ps5-native-app-boilerplate"
-    sdk = foundation / ".deps/native/ps5-payload-sdk"
-    clang_wrapper = foundation / "tooling/prospero-clang18"
-    linker = sdk / "bin/prospero-lld"
-    builder = foundation / "build/host/ps5-native-tool"
-    gears = lab / "projects/ps5-agc-gears"
 
     BUILD_DIR.mkdir(parents=True, exist_ok=True)
     DIST_DIR.mkdir(parents=True, exist_ok=True)
@@ -234,12 +262,6 @@ def main():
     pie_elf = BUILD_DIR / "consumer_pie.elf"
     eboot_elf = BUILD_DIR / "eboot.elf"
     eboot_bin = DIST_DIR / "eboot.bin"
-
-    if args.check_only:
-        if not dep_file.is_file() or not obj_file.is_file():
-            sys.exit("Cannot check isolation: object or dependency file missing. Run build first.")
-        check_isolation(dep_file, obj_file)
-        return
 
     subprocess.run([
         sys.executable, str(ROOT / "tools/prepare_consumer_storage_shaders.py"),
@@ -324,27 +346,18 @@ def main():
     consumer_source = (CONSUMER_DIR / "ubo_layout_main.c" if args.ubo_standard_layout
                        else CONSUMER_DIR / "main.c")
 
-    has_native_toolchain = clang_wrapper.is_file() and linker.is_file() and builder.is_file()
-
-    print(f"Compiling consumer {consumer_source.name}...")
-    if has_native_toolchain:
-        env = dict(os.environ, PS5_PAYLOAD_SDK=str(sdk))
-        subprocess.run(
-            ["sh", str(clang_wrapper), *cflags, "-c", str(consumer_source), "-o", str(obj_file)],
-            env=env, check=True
-        )
-    else:
-        subprocess.run(
-            ["cc", *cflags, "-c", str(consumer_source), "-o", str(obj_file)],
-            check=True
-        )
-
-    # Verify isolation immediately after compilation
-    check_isolation(dep_file, obj_file)
-
-    if not has_native_toolchain:
-        print("Native PS5 toolchain not found; verified isolation on host and skipping packaging.")
-        return
+    print(f"Compiling native consumer {consumer_source.name}...")
+    env = dict(os.environ, PS5_PAYLOAD_SDK=str(sdk))
+    subprocess.run(
+        [str(compiler), *cflags, "-c", str(consumer_source), "-o", str(obj_file)],
+        env=env, check=True
+    )
+    check_isolation(dep_file, obj_file, sdk)
+    crt = BUILD_DIR / "crt.o"
+    subprocess.run([
+        str(sdk / "bin/prospero-clang++"), "-std=c++20", "-O2", "-fno-exceptions", "-fno-rtti",
+        "-c", str(foundation / "tooling/native/app_crt.cpp"), "-o", str(crt)
+    ], env=env, check=True)
 
     # 2. Link PIE ELF
     map_file = BUILD_DIR / "consumer.map"
@@ -357,16 +370,16 @@ def main():
         f"-Map={map_file}",
         "-e", "_start",
         "-o", str(pie_elf),
-        str(DIST_SDK / "lib/crt.o"),
+        str(crt),
         str(obj_file),
         str(DIST_SDK / "lib/libps5vk.a"),
         str(DIST_SDK / "lib/libpsbc.a"),
         str(sdk / "target/lib/libc++.a"),
         str(sdk / "target/lib/libc++abi.a"),
         str(sdk / "target/lib/libunwind.a"),
-        str(sdk / "target/lib/libpthread.a"),
         str(sdk / "target/lib/libc.a"),
         "--as-needed",
+        str(sdk / "target/lib/libkernel.so"),
         *sorted(str(p) for p in (sdk / "target/lib").glob("*.so")),
         str(DIST_SDK / "lib/libSceAgc.so"),
         str(DIST_SDK / "lib/libSceAgcDriver.so"),
@@ -392,9 +405,9 @@ def main():
     # 4. Package metadata and assets
     param = json.loads((gears / "sce_sys/param.json").read_text())
     param.update(
-        titleId="PPSA99994",
-        conceptId="99994",
-        contentId="UP9000-PPSA99994_00-PS5VKCOMPUTE0001"
+        titleId="PPSA88900",
+        conceptId="88900",
+        contentId="UP9000-PPSA88900_00-PS5VKCOMPUTE0001"
     )
     param["localizedParameters"]["en-US"]["titleName"] = "PS5 Vulkan SDK Consumer"
     (DIST_DIR / "sce_sys/param.json").write_text(json.dumps(param, indent=2) + "\n")
@@ -408,7 +421,9 @@ def main():
     for path in sorted(p for p in DIST_DIR.rglob("*") if p.is_file()):
         files[str(path.relative_to(DIST_DIR))] = hashlib.sha256(path.read_bytes()).hexdigest()
     artifact = {
-        "title": "PPSA99994",
+        "title": "PPSA88900",
+        "hardware_tested": False,
+        "fsr4_implemented": False,
         "profile": "public-consumer-resource-abi",
         "submit_enabled": True,
         "files": files,
@@ -559,7 +574,7 @@ def main():
         matrix_path = ROOT / "conformance_inventory/dxvk_v262_matrix.json"
         profile = json.loads(profile_path.read_text())
         artifact = {
-            "title": "PPSA99994",
+            "title": "PPSA88900",
             "profile": "dxvk-v262-capability-probe",
             "submit_enabled": False,
             "files": files,
@@ -574,7 +589,7 @@ def main():
         }
     if args.ubo_standard_layout:
         artifact = {
-            "title": "PPSA99994",
+            "title": "PPSA88900",
             "profile": "ubo-standard-layout-witness",
             "submit_enabled": True,
             "files": files,
@@ -591,7 +606,7 @@ def main():
         }
     if args.cube_array_witness:
         artifact = {
-            "title": "PPSA99994",
+            "title": "PPSA88900",
             "profile": "image-cube-array-witness",
             "submit_enabled": True,
             "files": files,
@@ -618,7 +633,7 @@ def main():
         }
     if args.imageless_framebuffer_witness:
         artifact = {
-            "title": "PPSA99994",
+            "title": "PPSA88900",
             "profile": "imageless-framebuffer-witness",
             "submit_enabled": True,
             "files": files,
@@ -634,11 +649,11 @@ def main():
             },
         }
     if args.bc_filter_format:
-        artifact = {"title": "PPSA99994", "profile": "bc-linear-filter-witness",
+        artifact = {"title": "PPSA88900", "profile": "bc-linear-filter-witness",
                     "submit_enabled": True, "files": files,
                     "bc_filter": json.loads((BUILD_DIR / "bc_filter_contract.json").read_text())}
     if args.bc_subresource_profile:
-        artifact = {"title": "PPSA99994", "profile": "bc-subresource-witness",
+        artifact = {"title": "PPSA88900", "profile": "bc-subresource-witness",
                     "submit_enabled": True, "files": files,
                     "bc_subresource": json.loads((BUILD_DIR / "bc_subresource_contract.json").read_text())}
     if args.single_set_samplers:
@@ -672,6 +687,7 @@ def main():
                 for kind in ("float", "uint", "sint")
             },
         }
+    artifact.update(hardware_tested=False, fsr4_implemented=False)
     artifact_path = DIST_DIR.parent / "artifact.json"
     artifact_path.write_text(json.dumps(artifact, indent=2) + "\n")
 

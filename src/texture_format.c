@@ -31,6 +31,12 @@
 #define CAP_VERTEX PS5VK_FORMAT_CAP_VERTEX_BUFFER
 #define CAP_UTEXEL PS5VK_FORMAT_CAP_UNIFORM_TEXEL_BUFFER
 #define CAP_STORAGE_IMAGE PS5VK_FORMAT_CAP_STORAGE_IMAGE
+#if PS5VK_FSR4_STORAGE_DIAGNOSTIC
+/* Private 192x144 FSR4 image witness; not a normal-profile promotion. */
+#define FSR4_STORAGE_CAP (CAP_STORAGE_IMAGE | CAP_SRC)
+#else
+#define FSR4_STORAGE_CAP 0u
+#endif
 #define RGBA8_SINT_ATTACHMENT_CAP CAP_INTEGER_TARGET
 #define D32_SAMPLED_CAP (CAP_SAMP | CAP_DST)
 #define D32S8_WITNESSED (CAP_DEPTH | CAP_SRC)
@@ -105,7 +111,7 @@ static const struct ps5vk_texture_format formats[] = {
     SAMPLED_STEXEL(VK_FORMAT_R8G8B8A8_UNORM, 4, UINT32_C(0x03800000), 4, 5, 6, 7,
             CAP_LINEAR | CAP_VERTEX | CAP_SRC | CAP_COLOR | CAP_COLOR_READBACK |
             CAP_UTEXEL | CAP_BLIT_DST,
-            CAP_BLEND),
+            CAP_BLEND | FSR4_STORAGE_CAP),
     SAMPLED(VK_FORMAT_R8G8B8A8_SNORM, 4, UINT32_C(0x03900000), 4, 5, 6, 7,
             CAP_LINEAR | CAP_VERTEX | CAP_UTEXEL, 0),
     SAMPLED(VK_FORMAT_R8G8B8A8_SRGB, 4, UINT32_C(0x08200000), 4, 5, 6, 7,
@@ -140,14 +146,14 @@ static const struct ps5vk_texture_format formats[] = {
     SAMPLED(VK_FORMAT_R16G16B16A16_SNORM, 8, UINT32_C(0x04200000), 4, 5, 6, 7,
             CAP_LINEAR | CAP_VERTEX, CAP_UTEXEL),
     SAMPLED(VK_FORMAT_R16G16B16A16_SFLOAT, 8, UINT32_C(0x04700000), 4, 5, 6, 7,
-            CAP_LINEAR | CAP_VERTEX, CAP_UTEXEL),
+            CAP_LINEAR | CAP_VERTEX, CAP_UTEXEL | FSR4_STORAGE_CAP),
     /* --- 32-bit sampled formats ------------------------------------------ */
     SAMPLED(VK_FORMAT_R32_SFLOAT, 4, UINT32_C(0x01600000), 4, 0, 0, 1,
-            CAP_LINEAR | CAP_VERTEX | CAP_UTEXEL, 0),
+            CAP_LINEAR | CAP_VERTEX | CAP_UTEXEL, FSR4_STORAGE_CAP),
     SAMPLED(VK_FORMAT_R32G32_SFLOAT, 8, UINT32_C(0x04000000), 4, 5, 0, 1,
             CAP_LINEAR | CAP_VERTEX, CAP_UTEXEL),
     SAMPLED_STEXEL(VK_FORMAT_R32G32B32A32_SFLOAT, 16, UINT32_C(0x04d00000), 4, 5, 6, 7,
-            CAP_LINEAR | CAP_VERTEX, CAP_UTEXEL),
+            CAP_LINEAR | CAP_VERTEX, CAP_UTEXEL | FSR4_STORAGE_CAP),
     /* --- typed integer sampled formats (nearest only) --------------------- */
     SAMPLED(VK_FORMAT_R8_UINT, 1, UINT32_C(0x00500000), 4, 0, 0, 1,
             CAP_VERTEX, CAP_UTEXEL),
@@ -398,6 +404,43 @@ void ps5vk_texture_format_properties(VkFormat format, VkFormatProperties *out)
     *out = properties;
 }
 
+VkExtent3D ps5vk_storage_image_max_extent(VkFormat format)
+{
+    if (!ps5vk_texture_format_witnessed(format, PS5VK_FORMAT_CAP_STORAGE_IMAGE))
+        return (VkExtent3D){0,0,0};
+#if PS5VK_FSR4_STORAGE_DIAGNOSTIC
+    return (VkExtent3D){192,144,1};
+#else
+    return (VkExtent3D){8,8,1};
+#endif
+}
+
+VkBool32 ps5vk_storage_image_usage(VkFormat format, VkImageUsageFlags usage)
+{
+    const VkImageUsageFlags base = VK_IMAGE_USAGE_STORAGE_BIT |
+        VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    const uint32_t caps = PS5VK_FORMAT_CAP_STORAGE_IMAGE |
+        PS5VK_FORMAT_CAP_TRANSFER_SRC | PS5VK_FORMAT_CAP_TRANSFER_DST;
+    if (!ps5vk_texture_format_witnessed(format, caps)) return VK_FALSE;
+    if (usage == base) return VK_TRUE;
+#if PS5VK_FSR4_STORAGE_DIAGNOSTIC
+    if (usage == (base | VK_IMAGE_USAGE_SAMPLED_BIT))
+        return ps5vk_texture_format_sampled_image(format);
+#endif
+    return VK_FALSE;
+}
+
+VkBool32 ps5vk_storage_image_info(const VkImageCreateInfo *info)
+{
+    if (!info || !ps5vk_storage_image_usage(info->format, info->usage)) return VK_FALSE;
+    const VkExtent3D limit = ps5vk_storage_image_max_extent(info->format);
+    return info->imageType == VK_IMAGE_TYPE_2D && !info->flags &&
+        info->mipLevels == 1 && info->arrayLayers == 1 &&
+        info->samples == VK_SAMPLE_COUNT_1_BIT && info->tiling == VK_IMAGE_TILING_OPTIMAL &&
+        info->extent.width && info->extent.width <= limit.width &&
+        info->extent.height && info->extent.height <= limit.height && info->extent.depth == 1;
+}
+
 VkBool32 ps5vk_texture_format_image_usage(VkFormat format, VkImageUsageFlags usage)
 {
     const struct ps5vk_texture_format *entry = ps5vk_texture_format_lookup(format);
@@ -435,17 +478,7 @@ VkBool32 ps5vk_texture_format_image_usage(VkFormat format, VkImageUsageFlags usa
         (usage == VK_IMAGE_USAGE_SAMPLED_BIT ||
          usage == (VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT)))
         return VK_TRUE;
-    /* The BDA result image is a resource-only R32_UINT UAV over padded
-     * linear backing. Its clear, compute write and readback use all three
-     * declared roles in GENERAL. */
-    if (format == VK_FORMAT_R32_UINT &&
-        (w & (PS5VK_FORMAT_CAP_STORAGE_IMAGE | PS5VK_FORMAT_CAP_TRANSFER_SRC |
-              PS5VK_FORMAT_CAP_TRANSFER_DST)) ==
-            (PS5VK_FORMAT_CAP_STORAGE_IMAGE | PS5VK_FORMAT_CAP_TRANSFER_SRC |
-             PS5VK_FORMAT_CAP_TRANSFER_DST) &&
-        usage == (VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
-                  VK_IMAGE_USAGE_TRANSFER_DST_BIT))
-        return VK_TRUE;
+    if (ps5vk_storage_image_usage(format, usage)) return VK_TRUE;
     /* BGRA8 transfer destinations use the tiled display-compatible footprint
      * with or without the colour-attachment usage bit. */
     if (format == VK_FORMAT_B8G8R8A8_UNORM &&

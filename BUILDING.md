@@ -12,9 +12,10 @@ to upstream private lab paths; removing those is M0 in the
 [implementation plan](docs/IMPLEMENTATION_PLAN.md#m0--reproducible-public-foundation-source-import-complete).
 
 A [dual-SDK link witness](docs/OPENGL_VULKAN_COEXISTENCE.md) cross-links the
-staged Vulkan archive with a verified OpenGL Core 3.3 package after isolating
-their incompatible compiler symbols. The current OpenGL 4.6 example and
-on-console execution remain open.
+staged Vulkan archive with a verified OpenGL 4.6 package after isolating
+their incompatible compiler symbols. A corrected native OpenGL sample passed
+on the authorized console; see the [hardware receipt](docs/HARDWARE_GL46_BASELINE.md).
+FSR4 and shared-resource execution remain open.
 
 The imported GitHub Actions workflow is manual-only until this is resolved.
 Do not treat its presence, an upstream badge, or a host mock archive as proof
@@ -203,3 +204,63 @@ python3 -m unittest tests/test_consumer_resource_abi.py
 python3 tools/run_consumer.py --host <console> \
   --runs-dir ../logging_server/runs --out <private-receipt.json>
 ```
+
+## Public native consumer package
+
+Prepare the public dependencies and native SDK above, then build the public
+native-app template's host tool and runtime. Point the consumer at that prepared
+template (containing `build/host/ps5-native-tool` and `runtime/libc.prx`):
+
+```sh
+export PS5_NATIVE_APP_TEMPLATE=/absolute/path/to/ps5-native-app-boilerplate
+python3 tools/build_consumer.py
+python3 tools/build_consumer.py --check-only
+python3 tests/test_consumer_build_inputs.py
+```
+
+The result is a complete signed `dist-consumer/PPSA88900/` folder. The builder
+uses the public payload SDK's C and C++ drivers, compiles the template startup,
+and rejects missing native inputs before staging. There is no host fallback.
+`--use-staged-sdk` is only for a previously verified current native SDK.
+
+The consumer still requires a local `dev.conf` with a reachable ps5log TCP
+receiver. The builder copies it when present; without it the current consumer
+exits before GPU testing. A successful build is not a hardware receipt.
+
+Deploy and test only on **192.0.2.1**, via FTP port 2121 under
+`/data/homebrew/PPSA88900/`. If unavailable, wait; no fallback console is
+authorized. The native consumer has not yet been run in this checkout.
+
+## Bounded native FSR4 witnesses
+
+These separate PPSA88900 applications use the prepared native template and
+payload SDK above. They write their own result files and do not require the
+generic consumer's dev.conf. They remain diagnostic builds with a 192×144
+output ceiling, not the reusable FSR SDK.
+
+Prepare the diagnostic SDK once, using the pinned local compiler inputs:
+
+```sh
+PS5VK_SHADER_INT8_DIAGNOSTIC=1 PS5VK_SHADER_INT16_DIAGNOSTIC=1 \
+PS5VK_SUBGROUP_ALL_DIAGNOSTIC=1 PS5VK_FSR4_STORAGE_DIAGNOSTIC=1 \
+python3 tools/build_sdk.py
+```
+
+The frame builder requires the original and corrected local reference exports
+documented in [the reference procedure](docs/FSR4_REFERENCE_RUNTIME.md). The
+precision witnesses require the pinned DXC and converter but no capture:
+
+```sh
+python3 tools/build_fsr4_precision_probe.py --rounding rtz --out build/fsr4-precision-rtz-app
+python3 tools/build_fsr4_precision_probe.py --rounding rte --out build/fsr4-texture-rte-app
+python3 tools/build_fsr4_frame.py --dispatch 29 --use-staged-sdk --out build/fsr4-image29-app
+python3 tools/build_fsr4_frame.py --frames 4 --use-staged-sdk --out build/fsr4-temporal-app
+python3 tools/run_python_tests.py test_fsr4_precision_corpus test_fsr4_frame_continuity test_fsr4_image_compare
+python3 tests/test_fsr4_converter_fma.py
+```
+
+The RTZ test checks scalar conversion; the RTE test checks typed texture loads,
+including subnormals and ties. Keep build manifests and hardware receipts
+separate: constructing an app does not validate its output. The native RTE
+result is recorded in [the receipt](docs/FSR4_TEXTURE_RTE_RESULT.json).
+Only 192.0.2.1 is authorized for deployment.

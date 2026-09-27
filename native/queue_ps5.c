@@ -15,7 +15,7 @@ enum { COMMAND_BYTES = 131072, ALIGNMENT = 65536, MAX_DISPATCHES =
        PS5VK_MAX_OPERATIONS * PS5VK_MAX_SUBMITTED_BUFFERS };
 struct prepared_dispatch {
     void *arena, *backing;
-    size_t bytes, words;
+    size_t bytes, words, scratch_offset, scratch_bytes;
     uint32_t packet[PS5VK_COMPUTE_COMMAND_CAPACITY + 8];
 };
 struct native_job {
@@ -134,6 +134,19 @@ static VkResult prepare(VkDevice device, const struct ps5vk_submission *submissi
             size_t push_offset = table_offset + table_bytes;
             p->bytes = push_offset + (program->push_constant_size ?
                 PS5VK_MAX_PUSH_CONSTANT_BYTES : 0);
+            if (program->scratch_bytes_per_wave) {
+                if ((program->scratch_bytes_per_wave & 1023u) ||
+                    program->scratch_bytes_per_wave > 8191u * 1024u) {
+                    result = VK_ERROR_UNKNOWN; goto fail;
+                }
+                p->scratch_bytes = (size_t)(program->scratch_bytes_per_wave | 1024u) *
+                    PS5VK_COMPUTE_SCRATCH_WAVES;
+                p->scratch_offset = ((p->bytes + 16383u) & ~(size_t)16383u) +
+                    PS5VK_SCRATCH_GUARD_BYTES;
+                p->bytes = p->scratch_offset + p->scratch_bytes + PS5VK_SCRATCH_GUARD_BYTES;
+                /* ponytail: one owned allocation per dispatch; share scratch after
+                 * measured graph memory pressure warrants a submission-wide arena. */
+            }
             result = device->memory.allocate(device->memory.context, p->bytes, &p->arena, &p->backing);
             if (result != VK_SUCCESS) goto fail;
             memcpy(p->arena, program->code, code_bytes);
@@ -148,6 +161,14 @@ static VkResult prepare(VkDevice device, const struct ps5vk_submission *submissi
                     .completion=(uintptr_t)job->command + 0x1100,
                     .readback=(uintptr_t)job->command + 0xff4},
                 .completion_value = (job->serial << 32) | job->count};
+            if (p->scratch_bytes) {
+                uint8_t *scratch = (uint8_t *)p->arena + p->scratch_offset;
+                memset(scratch, 0, p->scratch_bytes);
+                memset(scratch - PS5VK_SCRATCH_GUARD_BYTES, 0xa5, PS5VK_SCRATCH_GUARD_BYTES);
+                memset(scratch + p->scratch_bytes, 0xa5, PS5VK_SCRATCH_GUARD_BYTES);
+                encoding.scratch = (uintptr_t)scratch;
+                encoding.scratch_bytes = p->scratch_bytes;
+            }
             if(program->push_constant_size) {
                 if(op->push_constant_size!=program->push_constant_size) {
                     result=VK_ERROR_UNKNOWN;goto fail;
@@ -222,6 +243,15 @@ static VkResult launch(VkDevice device, void *opaque)
         cache(readback, 16);
         if (readback[3] != 0) return VK_ERROR_DEVICE_LOST;
         ++job->completed;
+        if (p->scratch_bytes) {
+            const uint8_t *scratch = (const uint8_t *)p->arena + p->scratch_offset;
+            cache(scratch - PS5VK_SCRATCH_GUARD_BYTES, PS5VK_SCRATCH_GUARD_BYTES);
+            cache(scratch + p->scratch_bytes, PS5VK_SCRATCH_GUARD_BYTES);
+            for (size_t j = 0; j < PS5VK_SCRATCH_GUARD_BYTES; ++j)
+                if ((scratch - PS5VK_SCRATCH_GUARD_BYTES)[j] != 0xa5 ||
+                    scratch[p->scratch_bytes + j] != 0xa5)
+                    retain("scratch-guard-corruption");
+        }
         ps5log_printf(PS5LOG_MARK, "PS5VK_QUEUE_COMPLETED serial=%llu index=%u token=%llx gcr=0070f528",
                       (unsigned long long)job->serial, i, (unsigned long long)token);
     }

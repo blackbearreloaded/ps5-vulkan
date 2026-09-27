@@ -60,7 +60,7 @@ class BCFilterVerifierTests(unittest.TestCase):
         for index, key in enumerate(('input_sha256','reference_sha256','nearest_sha256',
                                     'decoder_sha256','reference_generator_sha256','vert_spirv_sha256','frag_spirv_sha256')):
             self.contract[key] = str(index+1)*64
-        self.artifact = dict(title='PPSA99994', profile='bc-linear-filter-witness', submit_enabled=True,
+        self.artifact = dict(title='PPSA88900', profile='bc-linear-filter-witness', submit_enabled=True,
                              files={'eboot.bin':'a'*64}, bc_filter=self.contract)
         self.messages = [
             'PS5VK_CONSUMER_BC_FILTER_FEATURE textureCompressionBC=1 enabled_by_features2=1',
@@ -73,12 +73,12 @@ class BCFilterVerifierTests(unittest.TestCase):
             'PS5VK_READY_FOR_SHELL_CLOSE resources_retired=1']
 
     def run_validation(self):
-        lines = ['HELLO ps5log/1 title=PPSA99994 app=ps5vk boot=123']
+        lines = ['HELLO ps5log/1 title=PPSA88900 app=ps5vk boot=123']
         lines += [f'{i}\t{i}\tMARK\t{message}' for i,message in enumerate(self.messages,1)]
         lines += [f'BYE seq={len(self.messages)} reason=consumer-bc-filter-end']
         log = ('\n'.join(lines)+'\n').encode()
         receipt = dict(protocol='ps5log/1',transport='tcp',clean=True,bye=True,gaps=[],raw_lines=0,
-                       identity=dict(title='PPSA99994',app='ps5vk',boot='123'),
+                       identity=dict(title='PPSA88900',app='ps5vk',boot='123'),
                        last_seq=len(self.messages),sha256=hashlib.sha256(log).hexdigest())
         return validate(log, receipt, self.artifact)
 

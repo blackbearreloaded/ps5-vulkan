@@ -8,7 +8,7 @@ PROFILE = 'bc-linear-filter-witness'
 
 
 def validate(log, receipt, artifact):
-    _require(artifact.get('title') == 'PPSA99994' and artifact.get('profile') == PROFILE and
+    _require(artifact.get('title') == 'PPSA88900' and artifact.get('profile') == PROFILE and
              artifact.get('submit_enabled') is True, 'BC filter artifact profile')
     contract = artifact.get('bc_filter', {})
     formats = ['VK_FORMAT_' + name.upper() + '_BLOCK' for name in FORMATS]
@@ -26,7 +26,7 @@ def validate(log, receipt, artifact):
                          'decoder_sha256', 'reference_generator_sha256', 'vert_spirv_sha256', 'frag_spirv_sha256')]
     _require(all(re.fullmatch('[0-9a-f]{64}', value) for value in hashes), 'artifact hashes')
     _require(contract['reference_sha256'] != contract['nearest_sha256'], 'distinct filter references')
-    messages = validate_stream(log, receipt, 'consumer-bc-filter-end')
+    messages = validate_stream(log, receipt, 'consumer-bc-filter-end', title="PPSA88900")
     def one(prefix):
         found = [m for m in messages if m.startswith(prefix)]
         _require(len(found) == 1, prefix)

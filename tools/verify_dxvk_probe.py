@@ -84,7 +84,7 @@ def validate(run: Path, artifact_manifest: Path, artifact_path: Path,
 
     artifact = json.loads(artifact_manifest.read_text())
     digest = hashlib.sha256(artifact_path.read_bytes()).hexdigest()
-    require(artifact.get("title") == "PPSA99994" and
+    require(artifact.get("title") == "PPSA88900" and
             artifact.get("profile") == EXPECTED_ARTIFACT_PROFILE and
             artifact.get("submit_enabled") is False, "artifact profile")
     require(artifact.get("files", {}).get("eboot.bin") == digest,
@@ -112,7 +112,7 @@ def validate(run: Path, artifact_manifest: Path, artifact_path: Path,
             receipt.get("protocol") == "ps5log/1", "transport")
     lines = data.decode().splitlines()
     require(len(lines) >= 3 and lines[0].startswith(
-        "HELLO ps5log/1 title=PPSA99994 app=ps5vk "), "hello")
+        "HELLO ps5log/1 title=PPSA88900 app=ps5vk "), "hello")
     hello = fields("HELLO " + lines[0].split(" ", 2)[2])
     identity = receipt.get("identity", {})
     require(all(hello.get(key) == identity.get(key)
@@ -302,7 +302,7 @@ def main() -> int:
     parser.add_argument("--manifest", type=Path,
                         default=ROOT / "dist-consumer/artifact.json")
     parser.add_argument("--artifact", type=Path,
-                        default=ROOT / "dist-consumer/PPSA99994/eboot.bin")
+                        default=ROOT / "dist-consumer/PPSA88900/eboot.bin")
     parser.add_argument("--matrix-snapshot", type=Path,
                         help="Immutable build-time matrix; permits verifying historical runs after promotion")
     args = parser.parse_args()

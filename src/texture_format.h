@@ -4,6 +4,10 @@
 #include <stdint.h>
 #include <vulkan/vulkan_core.h>
 
+VkExtent3D ps5vk_storage_image_max_extent(VkFormat);
+VkBool32 ps5vk_storage_image_usage(VkFormat, VkImageUsageFlags);
+VkBool32 ps5vk_storage_image_info(const VkImageCreateInfo *);
+
 /* The single authoritative per-format capability table.
  *
  * ps5-vulkan does not have a generic notion of "supported format". Every

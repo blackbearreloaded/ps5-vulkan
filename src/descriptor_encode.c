@@ -9,8 +9,8 @@
 #include <string.h>
 
 /* The compute UAV uses the same GFX10 T# fields as an ordinary 2D texture,
- * but carries no sampler. The exact supported image is one R32_UINT plane
- * over padded rows, with GENERAL layout and 256-byte address alignment. */
+ * but carries no sampler. The format table bounds the one-level padded
+ * plane, with GENERAL layout and 256-byte address alignment. */
 static VkResult storage_image_descriptor(VkDevice device,
     const VkDescriptorImageInfo *info, uint32_t out[8])
 {
@@ -20,17 +20,17 @@ static VkResult storage_image_descriptor(VkDevice device,
     VkImage image = view->image;
     if (view->device != device || !ps5vk_storage_image(image) ||
         image->layout != VK_IMAGE_LAYOUT_GENERAL ||
-        view->format != VK_FORMAT_R32_UINT || view->view_type != VK_IMAGE_VIEW_TYPE_2D ||
+        view->format != image->info.format || view->view_type != VK_IMAGE_VIEW_TYPE_2D ||
         view->range.aspectMask != VK_IMAGE_ASPECT_COLOR_BIT ||
         view->range.baseMipLevel || view->range.levelCount != 1 ||
         view->range.baseArrayLayer || view->range.layerCount != 1)
         return VK_ERROR_FEATURE_NOT_PRESENT;
     const struct ps5vk_texture_format *format =
-        ps5vk_texture_format_lookup(VK_FORMAT_R32_UINT);
+        ps5vk_texture_format_lookup(view->format);
     if (!format || !(format->witnessed & PS5VK_FORMAT_CAP_STORAGE_IMAGE))
         return VK_ERROR_FEATURE_NOT_PRESENT;
     uint32_t pitch; uint64_t needed;
-    if (ps5vk_texture_row_layout(4, image->info.extent.width,
+    if (ps5vk_texture_row_layout(format->bytes_per_texel, image->info.extent.width,
             image->info.extent.height, &pitch, &needed))
         return VK_ERROR_UNKNOWN;
     void *address = NULL; VkDeviceSize bytes = 0;
@@ -46,7 +46,7 @@ static VkResult storage_image_descriptor(VkDevice device,
         ((width & 3u) << 30);
     words[2] = (width >> 2) | ((image->info.extent.height - 1) << 14) | (1u << 31);
     words[3] = ps5vk_texture_format_dst_sel(format) | (9u << 28);
-    words[4] = pitch / 4u - 1u;
+    words[4] = pitch / format->bytes_per_texel - 1u;
     words[5] = 4u << 20;
     memcpy(out, words, sizeof(words));
     return VK_SUCCESS;

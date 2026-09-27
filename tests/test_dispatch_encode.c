@@ -87,5 +87,30 @@ int main(void)
     legacy.descriptor_set_sgpr[0]=2;assert(!ps5vk_dispatch_encode(words,128,&d));
     legacy.descriptor_set_sgpr[0]=1;d.addresses.descriptor_table+=16;
     assert(!ps5vk_dispatch_encode(words,128,&d));
-    puts("Multi-set dispatch SGPR encoding: pass (host packets only)");
+    /* Real scratch ABI: raw address at s0:1, odd KiB stride, bounded ring. */
+    d.program=&p;d.addresses.descriptor_table=d.descriptor_tables[0];
+    d.descriptor_tables[2]=0x20000a000;d.push_constants=0x20000c000;
+    p.scratch_bytes_per_wave=16384;
+    d.scratch=0x201000000;
+    d.scratch_bytes=17408u*(uint64_t)PS5VK_COMPUTE_SCRATCH_WAVES;
+    n=ps5vk_dispatch_encode(words,128,&d);assert(n);
+    user=find_sh(words,n,0xb900);assert(user<n);
+    assert(words[user+2]==(uint32_t)d.scratch && words[user+3]==0x80000002u);
+    size_t ring=find_sh(words,n,0xb860);assert(ring<n);
+    assert(words[ring+2]==(1152u|(17u<<12)));
+    size_t resource=find_sh(words,n,0xb848);assert(resource<n);
+    assert(words[resource+3]&1u);
+    memcpy(saved,words,sizeof(saved));
+    d.scratch_bytes--;assert(!ps5vk_dispatch_encode(words,128,&d));
+    assert(!memcmp(words,saved,sizeof(saved)));
+    d.scratch_bytes++;d.scratch=d.addresses.code;
+    assert(!ps5vk_dispatch_encode(words,128,&d));
+    d.scratch=0x201000001;assert(!ps5vk_dispatch_encode(words,128,&d));
+    d.scratch=0x201000000;p.scratch_bytes_per_wave=16385;
+    assert(!ps5vk_dispatch_encode(words,128,&d));
+    p.scratch_bytes_per_wave=0;d.scratch=0;d.scratch_bytes=0;
+    n=ps5vk_dispatch_encode(words,128,&d);assert(n);
+    ring=find_sh(words,n,0xb860);resource=find_sh(words,n,0xb848);
+    assert(words[ring+2]==0 && !(words[resource+3]&1u));
+    puts("Multi-set and scratch dispatch encoding: pass (host packets only)");
 }

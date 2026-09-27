@@ -251,6 +251,10 @@ enum ps5vk_t09_feature_bits {
      * subgroup built-ins) for a private measurement build. Not a subgroup
      * properties promise: VkPhysicalDeviceSubgroupProperties stays zero. */
     PS5VK_T09_FEATURE_SUBGROUP_BASIC_COMPUTE = 1u << 28,
+    /* Private FSR4 measurement: OpGroupNonUniformAll only, not public VOTE. */
+    PS5VK_T09_FEATURE_SUBGROUP_ALL_COMPUTE = 1u << 29,
+    /* Private FSR4 image-stage witness, not public QUAD support. */
+    PS5VK_T09_FEATURE_SUBGROUP_QUAD_COMPUTE = 1u << 30,
     /* A second, HOST_COHERENT memory type whose coherence the driver keeps at
      * map/unmap and submission boundaries (src/physical_device_profile.h).
      * Only the diagnostic witness build sets it until native proof. */

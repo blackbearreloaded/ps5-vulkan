@@ -435,6 +435,91 @@ static void diagnostic_compute_basic_gate(void)
     vkDestroyPipelineLayout(&device, pipeline_layout, NULL);
     assert(!device.pipeline_objects && !device.descriptor_objects);
 }
+static void diagnostic_compute_quad_gate(void)
+{
+    /* Private GroupNonUniformQuad, compute only. */
+    uint32_t words[24];
+    memcpy(words, module_a, 5 * sizeof(uint32_t));
+    words[5] = (2u << 16) | 17u; /* OpCapability */
+    words[6] = 68u;              /* GroupNonUniformQuad */
+    memcpy(words + 7, module_a + 5, 11 * sizeof(uint32_t));
+    words[18] = (6u << 16) | 365u; /* QuadBroadcast */
+    words[19] = words[20] = words[21] = words[22] = words[23] = 1u;
+    uint32_t code[] = {0x11111111};
+    struct ps5vk_compiled_program program = fixture(words, code);
+    program.spirv_words = sizeof(words) / sizeof(words[0]);
+    struct ps5vk_program_library library = {&program, 1};
+    struct VkPhysicalDevice_T physical = {0};
+    struct VkDevice_T device = {.compiler = {&library, ps5vk_program_resolve},
+                                .physical = &physical};
+    VkShaderModuleCreateInfo shader_info = {
+        .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+        .codeSize = sizeof(words), .pCode = words};
+    VkShaderModule module = VK_NULL_HANDLE;
+    assert(vkCreateShaderModule(&device, &shader_info, NULL, &module) ==
+           VK_ERROR_FEATURE_NOT_PRESENT && !module);
+    /* The Broadcast diagnostic does not admit quad operations. */
+    device.platform_features = PS5VK_FEATURE_SUBGROUP_BROADCAST_COMPUTE;
+    assert(vkCreateShaderModule(&device, &shader_info, NULL, &module) ==
+           VK_ERROR_FEATURE_NOT_PRESENT && !module);
+    device.platform_features = 0;
+    physical.platform.supported_features_t09 = PS5VK_T09_FEATURE_SUBGROUP_QUAD_COMPUTE;
+    assert(vkCreateShaderModule(&device, &shader_info, NULL, &module) == VK_SUCCESS);
+    VkPipelineLayout pipeline_layout = layout(&device);
+    VkComputePipelineCreateInfo create = info(module, pipeline_layout);
+    VkPipeline pipeline = VK_NULL_HANDLE;
+    assert(vkCreateComputePipelines(&device, VK_NULL_HANDLE, 1, &create,
+                                    NULL, &pipeline) == VK_SUCCESS);
+    vkDestroyPipeline(&device, pipeline, NULL);
+    vkDestroyShaderModule(&device, module, NULL);
+
+    words[18] = (6u << 16) | 366u; /* QuadSwap is the other admitted opcode. */
+    assert(vkCreateShaderModule(&device, &shader_info, NULL, &module) == VK_SUCCESS);
+    vkDestroyShaderModule(&device,module,NULL);
+    words[18] = (6u << 16) | 334u; /* Vote is outside the QUAD route. */
+    assert(vkCreateShaderModule(&device,&shader_info,NULL,&module) ==
+           VK_ERROR_FEATURE_NOT_PRESENT && !module);
+    words[18] = (6u << 16) | 365u;
+    words[6] = 61u; /* A quad opcode without its capability is refused. */
+    assert(vkCreateShaderModule(&device,&shader_info,NULL,&module) ==
+           VK_ERROR_FEATURE_NOT_PRESENT && !module);
+    words[6] = 68u;
+    words[8] = 0u; /* Vertex remains refused. */
+    assert(vkCreateShaderModule(&device,&shader_info,NULL,&module) ==
+           VK_ERROR_FEATURE_NOT_PRESENT && !module);
+    vkDestroyPipelineLayout(&device,pipeline_layout,NULL);
+    assert(!device.pipeline_objects && !device.descriptor_objects);
+}
+static void diagnostic_compute_all_gate(void)
+{
+    uint32_t words[25];
+    memcpy(words, module_a, 5 * sizeof(uint32_t));
+    words[5] = words[7] = (2u << 16) | 17u;
+    words[6] = 61u; words[8] = 62u;
+    memcpy(words + 9, module_a + 5, 11 * sizeof(uint32_t));
+    words[20] = (5u << 16) | 334u;
+    words[21] = words[22] = words[23] = words[24] = 1u;
+    struct VkPhysicalDevice_T physical = {0};
+    struct VkDevice_T device = {.physical = &physical};
+    VkShaderModuleCreateInfo create = {
+        .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+        .codeSize = sizeof(words), .pCode = words};
+    VkShaderModule module = VK_NULL_HANDLE;
+    assert(vkCreateShaderModule(&device, &create, NULL, &module) ==
+           VK_ERROR_FEATURE_NOT_PRESENT);
+    physical.platform.supported_features_t09 = PS5VK_T09_FEATURE_SUBGROUP_ALL_COMPUTE;
+    assert(vkCreateShaderModule(&device, &create, NULL, &module) == VK_SUCCESS);
+    vkDestroyShaderModule(&device, module, NULL);
+    words[20] = (5u << 16) | 335u; /* Any remains unsupported. */
+    assert(vkCreateShaderModule(&device, &create, NULL, &module) ==
+           VK_ERROR_FEATURE_NOT_PRESENT);
+    words[20] = (5u << 16) | 334u; words[8] = 64u;
+    assert(vkCreateShaderModule(&device, &create, NULL, &module) ==
+           VK_ERROR_FEATURE_NOT_PRESENT);
+    words[8] = 62u; words[10] = 0u;
+    assert(vkCreateShaderModule(&device, &create, NULL, &module) ==
+           VK_ERROR_FEATURE_NOT_PRESENT);
+}
 static void diagnostic_compute_iadd_gate(void)
 {
     uint32_t words[25];
@@ -521,9 +606,10 @@ int main(void)
     full_set_table_offsets();
     lifecycle(); legacy_offline_abi(); dispatch_base_flag(); negative(); graphics_entries();
     t08_capability_gates(); uniform_block_layout_gate(); unadvertised_subgroup_gate();
-    diagnostic_compute_basic_gate();
+    diagnostic_compute_basic_gate(); diagnostic_compute_quad_gate();
     int8_compute_probe_gate();
     diagnostic_compute_broadcast_gate(); diagnostic_compute_iadd_gate();
+    diagnostic_compute_all_gate();
     unadvertised_int16_gate();
     puts("Shader/pipeline contracts: pass (synthetic, no GPU execution)");
 }

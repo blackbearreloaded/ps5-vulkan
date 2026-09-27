@@ -15,7 +15,7 @@ def validate(log: bytes, receipt: dict, artifact: dict, eboot: Path) -> dict:
 
     contract = artifact.get("ubo_standard_layout", {})
     digest = artifact.get("files", {}).get("eboot.bin")
-    require(artifact.get("title") == "PPSA99994" and
+    require(artifact.get("title") == "PPSA88900" and
             artifact.get("profile") == "ubo-standard-layout-witness" and
             artifact.get("submit_enabled") is True and
             contract.get("api") == "Vulkan 1.0 KHR extension" and
@@ -46,7 +46,7 @@ def validate(log: bytes, receipt: dict, artifact: dict, eboot: Path) -> dict:
     require(len(lines) > 2 and lines[0].startswith("HELLO ps5log/1 "), "hello")
     identity = dict(item.split("=", 1) for item in lines[0].split()[2:])
     recorded = receipt.get("identity", {})
-    require(identity.get("title") == "PPSA99994" and
+    require(identity.get("title") == "PPSA88900" and
             identity.get("app") == "ps5vk-ubo" and
             all(identity.get(key) == recorded.get(key)
                 for key in ("title", "app", "boot")),

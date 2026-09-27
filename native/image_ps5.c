@@ -133,12 +133,7 @@ VkResult ps5vk_native_image_requirements(VkDevice d, const VkImageCreateInfo *in
             PS5VK_FORMAT_CAP_DEPTH_STENCIL_ATTACHMENT))
         return VK_ERROR_FORMAT_NOT_SUPPORTED;
     int sampled = ps5vk_texture_format_sampled_image(info->format);
-    if ((info->usage & VK_IMAGE_USAGE_STORAGE_BIT) &&
-        (info->format != VK_FORMAT_R32_UINT || info->imageType != VK_IMAGE_TYPE_2D ||
-         info->extent.width > 8 || info->extent.height > 8 ||
-         info->mipLevels != 1 || info->arrayLayers != 1 || info->samples != VK_SAMPLE_COUNT_1_BIT ||
-         info->flags || info->usage != (VK_IMAGE_USAGE_STORAGE_BIT |
-             VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT)))
+    if ((info->usage & VK_IMAGE_USAGE_STORAGE_BIT) && !ps5vk_storage_image_info(info))
         return VK_ERROR_FORMAT_NOT_SUPPORTED;
     /* The colour-target footprint (one 64KB_R_X surface, 128 KiB-aligned) is
      * shared by every format this build renders into, including the integer

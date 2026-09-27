@@ -39,7 +39,7 @@ int main(void)
     ps5log_config_defaults(&config);
     if (ps5log_load_config(paths, 1, &config, &loaded)) _exit(1);
     config.udp = 0;
-    if (ps5log_init(&config, "PPSA99994", "ps5vk-ubo", boot)) _exit(1);
+    if (ps5log_init(&config, "PPSA88900", "ps5vk-ubo", boot)) _exit(1);
 
     const char *instance_extension =
         VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME;

@@ -769,8 +769,12 @@ static void bda_storage_image_trace(void)
     VkImageFormatProperties properties={0};
     assert(ps5vk_graphics_image_properties(VK_FORMAT_R32_UINT,VK_IMAGE_TYPE_2D,
         VK_IMAGE_TILING_OPTIMAL,usage,0,1u<<20,&properties)==VK_SUCCESS);
-    assert(properties.maxExtent.width==8 && properties.maxExtent.height==8 &&
-        properties.maxMipLevels==1 && properties.maxArrayLayers==1);
+#if PS5VK_FSR4_STORAGE_DIAGNOSTIC
+    assert(properties.maxExtent.width==192 && properties.maxExtent.height==144);
+#else
+    assert(properties.maxExtent.width==8 && properties.maxExtent.height==8);
+#endif
+    assert(properties.maxMipLevels==1 && properties.maxArrayLayers==1);
     VkImageCreateInfo info={.sType=VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
         .imageType=VK_IMAGE_TYPE_2D,.format=VK_FORMAT_R32_UINT,
         .extent={DIM,DIM,1},.mipLevels=1,.arrayLayers=1,
@@ -780,7 +784,7 @@ static void bda_storage_image_trace(void)
     info.usage=VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
     assert(vkCreateImage(device,&info,NULL,&image)==VK_ERROR_FORMAT_NOT_SUPPORTED && !image);
     info.usage=usage;
-    info.extent.width=DIM+1;
+    info.extent.width=properties.maxExtent.width+1;
     assert(vkCreateImage(device,&info,NULL,&image)==VK_ERROR_FORMAT_NOT_SUPPORTED && !image);
     info.extent.width=DIM;
     assert(vkCreateImage(device,&info,NULL,&image)==VK_SUCCESS);
@@ -1264,6 +1268,54 @@ static void bgra_tiled_transfer_destination(void)
     vkDestroyImage(device, target, NULL);
 }
 
+#if PS5VK_FSR4_STORAGE_DIAGNOSTIC
+static void fsr4_storage_round_trip(void)
+{
+    const VkFormat formats[]={VK_FORMAT_R32_UINT,VK_FORMAT_R32_SFLOAT,
+        VK_FORMAT_R8G8B8A8_UNORM,VK_FORMAT_R16G16B16A16_SFLOAT,
+        VK_FORMAT_R32G32B32A32_SFLOAT};
+    for(unsigned n=0;n<sizeof(formats)/sizeof(formats[0]);++n)
+    for(unsigned sampled=0;sampled<2;++sampled) {
+        const unsigned texel=ps5vk_texture_format_lookup(formats[n])->bytes_per_texel;
+        const size_t row=33u*texel, size=row*7u, pitch=(row+255u)&~255u;
+        void *image_map,*input_map,*output_map;
+        VkImageUsageFlags usage=VK_IMAGE_USAGE_STORAGE_BIT|VK_IMAGE_USAGE_TRANSFER_SRC_BIT|
+            VK_IMAGE_USAGE_TRANSFER_DST_BIT|(sampled?VK_IMAGE_USAGE_SAMPLED_BIT:0);
+        VkImage image=make_image_extent(formats[n],usage,33,7,&image_map);
+        memset(image_map,0xa5,(size_t)image->requirements.size);
+        VkBuffer input=make_buffer(VK_BUFFER_USAGE_TRANSFER_SRC_BIT,size+32,&input_map);
+        VkBuffer output=make_buffer(VK_BUFFER_USAGE_TRANSFER_DST_BIT,size+32,&output_map);
+        memset(input_map,0xa5,size+32);memset(output_map,0xa5,size+32);
+        for(size_t i=0;i<size;++i)((unsigned char*)input_map)[16+i]=(unsigned char)(i*37u+11u);
+        VkCommandBuffer command=begin();
+        VkImageMemoryBarrier b=transfer_barrier(image,VK_IMAGE_LAYOUT_UNDEFINED,
+            VK_IMAGE_LAYOUT_GENERAL,0,VK_ACCESS_TRANSFER_WRITE_BIT);
+        vkCmdPipelineBarrier(command,VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+            VK_PIPELINE_STAGE_TRANSFER_BIT,0,0,NULL,0,NULL,1,&b);
+        VkBufferImageCopy region={.bufferOffset=16,
+            .imageSubresource={VK_IMAGE_ASPECT_COLOR_BIT,0,0,1},.imageExtent={33,7,1}};
+        vkCmdCopyBufferToImage(command,input,image,VK_IMAGE_LAYOUT_GENERAL,1,&region);
+        b=transfer_barrier(image,VK_IMAGE_LAYOUT_GENERAL,VK_IMAGE_LAYOUT_GENERAL,
+            VK_ACCESS_TRANSFER_WRITE_BIT,VK_ACCESS_SHADER_READ_BIT|VK_ACCESS_SHADER_WRITE_BIT);
+        vkCmdPipelineBarrier(command,VK_PIPELINE_STAGE_TRANSFER_BIT,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,0,0,NULL,0,NULL,1,&b);
+        b=transfer_barrier(image,VK_IMAGE_LAYOUT_GENERAL,VK_IMAGE_LAYOUT_GENERAL,
+            VK_ACCESS_SHADER_WRITE_BIT,VK_ACCESS_TRANSFER_READ_BIT);
+        vkCmdPipelineBarrier(command,VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+            VK_PIPELINE_STAGE_TRANSFER_BIT,0,0,NULL,0,NULL,1,&b);
+        vkCmdCopyImageToBuffer(command,image,VK_IMAGE_LAYOUT_GENERAL,output,1,&region);
+        submit_and_wait(command);
+        assert(!memcmp(input_map,output_map,size+32));
+        for(size_t y=0;y<7;++y) {
+            assert(!memcmp((unsigned char*)image_map+y*pitch,(unsigned char*)input_map+16+y*row,row));
+            for(size_t x=row;x<pitch;++x)assert(((unsigned char*)image_map)[y*pitch+x]==0xa5);
+        }
+        vkDestroyBuffer(device,input,NULL);vkDestroyBuffer(device,output,NULL);
+        vkDestroyImage(device,image,NULL);
+    }
+}
+#endif
+
 int main(void)
 {
     VkInstance instance;
@@ -1303,6 +1355,9 @@ int main(void)
     /* Mid-gray sRGB must retain precision before filtering (132/255). */
     assert(fabsf(ps5vk_bc_blit_srgb_to_linear(132)-0.23074005f)<0.000001f);
     bda_storage_image_trace();
+#if PS5VK_FSR4_STORAGE_DIAGNOSTIC
+    fsr4_storage_round_trip();
+#endif
     readback_return_recording();
     bc_block_transfer_round_trip();
     const uint8_t bc1_red[8] = {0x00, 0xf8, 0x00, 0x00, 0, 0, 0, 0};
