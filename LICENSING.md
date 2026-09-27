@@ -1,6 +1,21 @@
 # Licensing and source provenance
 
-Unless a file states otherwise, the original work in this repository is:
+## PS5 FSR4 working copy
+
+Modified by BlackBearReloaded, 2026-09-26. This repository imports
+[mpereiraesaa/ps5-vulkan](https://github.com/mpereiraesaa/ps5-vulkan) at
+`10a76510a6b1e48061b5057f352cbbd6d78549fb`, preserving its complete history,
+copyright notices and GPL terms. It is an independent working copy; upstream
+has not endorsed or validated FSR4 support.
+
+The import adapts the README, build-status documentation and workflow triggers,
+and adds FSR planning documents. These additions are Copyright (C) 2026
+BlackBearReloaded and licensed under `GPL-3.0-or-later`. The original driver,
+tests and build-tool implementation remain unchanged at this import.
+
+## Upstream licensing and source provenance
+
+Unless a file states otherwise, the original work in the imported Vulkan baseline is:
 
 Copyright (C) 2026 Manuel Pereira
 

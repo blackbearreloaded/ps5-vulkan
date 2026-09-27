@@ -1,5 +1,24 @@
 # Building and testing
 
+## PS5 FSR4 working-copy status
+
+Modified by BlackBearReloaded, 2026-09-26. The recipe below is inherited from
+the pinned Vulkan baseline; it is not yet an FSR build. The complete host suite
+and native build still require an upstream private `logging_server` client.
+A public replacement and independent native dependency paths are M0 in the
+[implementation plan](docs/IMPLEMENTATION_PLAN.md#m0--reproducible-public-foundation-source-import-complete).
+
+The imported GitHub Actions workflow is manual-only until this is resolved.
+Do not treat its presence, an upstream badge, or a host mock archive as proof
+that this checkout builds or runs natively. The upstream hardware receipts
+remain historical evidence for their exact upstream artifacts.
+
+The dependency-free attribution check can run now:
+
+```sh
+python3 tools/run_python_tests.py test_license_policy
+```
+
 ## Host checks
 
 Install Python 3, Make, a C11 compiler, Git and `glslangValidator`, then prepare the pinned Vulkan

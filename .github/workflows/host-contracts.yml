@@ -1,10 +1,10 @@
 name: Host contracts
 
+# Modified by BlackBearReloaded, 2026-09-26.
+# The inherited native/host recipe requires upstream private logging support.
+# Keep it manual until implementation-plan M0 supplies public dependencies.
 on:
-  pull_request:
-  push:
-    branches:
-      - main
+  workflow_dispatch:
 
 permissions:
   contents: read
