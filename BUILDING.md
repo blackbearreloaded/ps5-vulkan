@@ -11,6 +11,11 @@ The inherited native sample and complete host suite still contain references
 to upstream private lab paths; removing those is M0 in the
 [implementation plan](docs/IMPLEMENTATION_PLAN.md#m0--reproducible-public-foundation-source-import-complete).
 
+A [dual-SDK link witness](docs/OPENGL_VULKAN_COEXISTENCE.md) cross-links the
+staged Vulkan archive with a verified OpenGL Core 3.3 package after isolating
+their incompatible compiler symbols. The current OpenGL 4.6 example and
+on-console execution remain open.
+
 The imported GitHub Actions workflow is manual-only until this is resolved.
 Do not treat its presence, an upstream badge, or a host mock archive as proof
 that this checkout builds or runs natively. The upstream hardware receipts
