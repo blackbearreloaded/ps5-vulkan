@@ -3,9 +3,12 @@
 ## PS5 FSR4 working-copy status
 
 Modified by BlackBearReloaded, 2026-09-26. The recipe below is inherited from
-the pinned Vulkan baseline; it is not yet an FSR build. The complete host suite
-and native build still require an upstream private `logging_server` client.
-A public replacement and independent native dependency paths are M0 in the
+the pinned Vulkan baseline; it is not yet an FSR build. The reusable SDK
+builder now uses the public payload SDK compiler and the logger bundled in
+pinned public `ps5-agc-gears`. It fails before staging if native dependencies
+are missing and never substitutes the host test archive for the native library.
+The inherited native sample and complete host suite still contain references
+to upstream private lab paths; removing those is M0 in the
 [implementation plan](docs/IMPLEMENTATION_PLAN.md#m0--reproducible-public-foundation-source-import-complete).
 
 The imported GitHub Actions workflow is manual-only until this is resolved.
@@ -21,8 +24,9 @@ python3 tools/run_python_tests.py test_license_policy
 
 ## Host checks
 
-Install Python 3, Make, a C11 compiler, Git and `glslangValidator`, then prepare the pinned Vulkan
-headers, compiler dependencies and run the contract suite:
+Install Python 3 with Mako and PyYAML, Make, a C11 compiler, Git and
+`glslangValidator`, then prepare the pinned Vulkan headers, compiler dependencies
+and run the contract suite:
 
 ```sh
 make vulkan-headers
@@ -56,8 +60,19 @@ python3 tools/run_python_tests.py -v -j 1        # serial, verbose
 
 ## Companion repositories
 
-Native builds currently consume source-level support from `ps5-agc-gears` and
-the `ps5log/1` client from `logging_server`. Keep the repositories as siblings:
+The reusable SDK cross-build fetches the public AGC support and its byte-identical
+`ps5log/1` header plus PS5 network adapter at one pinned revision:
+
+```sh
+make vulkan-headers compiler-deps native-deps
+export PS5_PAYLOAD_SDK=/absolute/path/to/ps5-payload-sdk
+python3 tools/build_psbc.py --target ps5
+python3 tools/build_sdk.py
+```
+
+This builds a native archive and checks an independent native consumer; it
+does not run on a console. The inherited sample and full host suite still
+expect sibling lab repositories:
 
 ```text
 homebrew_ps5/
