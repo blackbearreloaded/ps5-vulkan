@@ -535,6 +535,16 @@ check:
 	fi
 build/libpsbc.host.a:
 	$(PYTHON) tools/build_psbc.py --host
+
+# Compile captured FSR4 SPIR-V against the pinned PS5 compiler on the host.
+# Source extraction is explicit: the BC250 capsule is a separate upstream input.
+.PHONY: fsr4-compile-probe
+fsr4-compile-probe: build/fsr4_compile_probe
+
+build/fsr4_compile_probe: tools/fsr4_compile_probe.c build/libpsbc.host.a
+	$(CC) -std=c11 -O2 -Wall -Wextra -Werror -Ithird_party/psbc-reference \
+		src/ps5_compiler_shims.c tools/fsr4_compile_probe.c \
+		build/libpsbc.host.a -lstdc++ -lm -lpthread -o $@
 .PHONY: test-runtime-header
 .PHONY: test-tessellation-compiler
 # The tessellation compiler contract asserts what the pinned dependency really
