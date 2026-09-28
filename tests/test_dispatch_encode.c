@@ -112,5 +112,12 @@ int main(void)
     n=ps5vk_dispatch_encode(words,128,&d);assert(n);
     ring=find_sh(words,n,0xb860);resource=find_sh(words,n,0xb848);
     assert(words[ring+2]==0 && !(words[resource+3]&1u));
+    /* The dispatch is followed by a CP DMA prefetch of its code into GL2. */
+    size_t prefetch=n;
+    for(size_t i=0;i<n;i+=((words[i]>>16)&0x3fff)+2)
+        if(((words[i]>>8)&0xff)==0x15){prefetch=i+5;break;}
+    assert(prefetch<n && words[prefetch]==0xc0055000u && words[prefetch+1]==0x60200000u);
+    assert(words[prefetch+2]==0x00004000u && words[prefetch+3]==2 && words[prefetch+4]==0x00004000u);
+    assert(words[prefetch+5]==2 && words[prefetch+6]==(0x80000000u|320u));
     puts("Multi-set and scratch dispatch encoding: pass (host packets only)");
 }

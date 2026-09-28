@@ -192,6 +192,20 @@ size_t ps5vk_dispatch_encode(uint32_t *words, size_t capacity,
             /* DISPATCH_INITIATOR CS_W32_EN (bit 15) selects wave32. */
             words[out + 4] = p->wave_size == 64 ? packet[i + 4] & ~UINT32_C(0x8000) : packet[i + 4];
             out += 5; found |= 4;
+            /* RADV's radv_after_dispatch L2 prefetch of the program once the
+             * dispatch has started: a CP DMA_DATA read (SRC_SEL SRC_ADDR_USING_L2,
+             * DST_SEL NOWHERE, no write confirm) of the 32-byte aligned code
+             * range, so the waves' sequential instruction misses hit GL2
+             * instead of each waiting for memory. */
+            const uint64_t first = a->code & ~UINT64_C(31);
+            const uint64_t bytes = ((a->code + code_bytes + 31) & ~UINT64_C(31)) - first;
+            if (out + 7 > capacity) return 0;
+            words[out] = UINT32_C(0xc0055000);
+            words[out + 1] = UINT32_C(0x60200000);
+            words[out + 2] = words[out + 4] = (uint32_t)first;
+            words[out + 3] = words[out + 5] = (uint32_t)(first >> 32);
+            words[out + 6] = (uint32_t)bytes | UINT32_C(0x80000000);
+            out += 7;
         } else if (opcode == 0x49) {
             if (total != 8 || (found & 8) || packet[i + 1] != 0x0070f528 || out + 8 > capacity) return 0;
             memcpy(words + out, packet + i, 5 * sizeof(uint32_t));
