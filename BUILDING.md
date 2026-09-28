@@ -2,20 +2,15 @@
 
 ## PS5 FSR4 working-copy status
 
-Modified by BlackBearReloaded, 2026-09-26. The recipe below is inherited from
-the pinned Vulkan baseline; it is not yet an FSR build. The reusable SDK
-builder now uses the public payload SDK compiler and the logger bundled in
-pinned public `ps5-agc-gears`. It fails before staging if native dependencies
-are missing and never substitutes the host test archive for the native library.
-The inherited native sample and complete host suite still contain references
-to upstream private lab paths; removing those is M0 in the
-[implementation plan](docs/IMPLEMENTATION_PLAN.md#m0--reproducible-public-foundation-source-import-complete).
-
-A [dual-SDK link witness](docs/OPENGL_VULKAN_COEXISTENCE.md) cross-links the
-staged Vulkan archive with a verified OpenGL 4.6 package after isolating
-their incompatible compiler symbols. A corrected native OpenGL sample passed
-on the authorized console; see the [hardware receipt](docs/HARDWARE_GL46_BASELINE.md).
-FSR4 and shared-resource execution remain open.
+Modified by BlackBearReloaded. The FSR4 SDK build is described in
+[docs/FSR4_SDK.md](docs/FSR4_SDK.md) and its acceptance in
+[VALIDATION.md](VALIDATION.md#fsr4-acceptance). The rest of this file is the
+recipe inherited from the pinned Vulkan baseline. The reusable SDK builder
+uses the public payload SDK compiler and the logger bundled in pinned public
+`ps5-agc-gears`. It fails before staging if native dependencies are missing and
+never substitutes the host test archive for the native library. The inherited
+native sample and parts of the host suite still refer to sibling lab projects
+(`LAB_SIBLINGS`).
 
 The imported GitHub Actions workflow is manual-only until this is resolved.
 Do not treat its presence, an upstream badge, or a host mock archive as proof
@@ -231,14 +226,18 @@ Deploy and test only on the console configured locally, via FTP port 2121 under
 `/data/homebrew/PPSA88900/`. If unavailable, wait; no fallback console is
 authorized. The native consumer has not yet been run in this checkout.
 
-## Bounded native FSR4 witnesses
+## Native FSR4 applications
 
-These separate PPSA88900 applications use the prepared native template and
-payload SDK above. They write their own result files and do not require the
-generic consumer's dev.conf. They remain diagnostic builds with a 192×144
-output ceiling, not the reusable FSR SDK.
+These PPSA88900 applications use the prepared native template and payload SDK
+above and write their own result files:
 
-Prepare the diagnostic SDK once, using the pinned local compiler inputs:
+- the runtime test (`tools/build_fsr4_runtime_test.py`) behind the
+  [acceptance](VALIDATION.md#fsr4-acceptance);
+- the interactive demo (`tools/build_fsr4_demo.py`), built from the staged
+  [FSR4 SDK](docs/FSR4_SDK.md);
+- the replay and precision witnesses below.
+
+Prepare the driver profile FSR4 needs once, using the pinned local compiler inputs:
 
 ```sh
 PS5VK_SHADER_INT8_DIAGNOSTIC=1 PS5VK_SHADER_INT16_DIAGNOSTIC=1 \
@@ -260,7 +259,6 @@ python3 tests/test_fsr4_converter_fma.py
 ```
 
 The RTZ test checks scalar conversion; the RTE test checks typed texture loads,
-including subnormals and ties. Keep build manifests and hardware receipts
-separate: constructing an app does not validate its output. The native RTE
-result is recorded in [the receipt](docs/FSR4_TEXTURE_RTE_RESULT.json).
-Use only the console explicitly authorized in your local configuration.
+including subnormals and ties. Constructing an app does not validate its
+output; keep results local. Use only the console explicitly authorized in your
+local configuration.
