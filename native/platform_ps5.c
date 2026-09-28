@@ -429,6 +429,9 @@ VkResult ps5vk_platform_query(struct ps5vk_platform *platform)
     platform->supported_features_t09 |= PS5VK_T09_FEATURE_SUBGROUP_BASIC_COMPUTE;
 #if defined(PS5VK_FSR4_STORAGE_DIAGNOSTIC) && PS5VK_FSR4_STORAGE_DIAGNOSTIC
     platform->supported_features_t09 |= PS5VK_T09_FEATURE_SUBGROUP_QUAD_COMPUTE;
+    /* Per-pipeline wave32/wave64: the FSR4 acceptance matrix ran with its
+     * measured wave64 passes. */
+    platform->supported_features_t09 |= PS5VK_T09_FEATURE_SUBGROUP_SIZE_CONTROL;
 #endif
 #if defined(PS5VK_SUBGROUP_ALL_DIAGNOSTIC) && PS5VK_SUBGROUP_ALL_DIAGNOSTIC
     platform->supported_features_t09 |= PS5VK_T09_FEATURE_SUBGROUP_ALL_COMPUTE;

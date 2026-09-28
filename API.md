@@ -66,6 +66,19 @@ and `quadOperationsInAllStages=false`. Elect, subgroup barriers and built-ins
 have a native witness. This does not report BALLOT, ARITHMETIC,
 `shaderSubgroupExtendedTypes` or `subgroupBroadcastDynamicId`.
 
+The FSR4 driver profile (`PS5VK_FSR4_STORAGE_DIAGNOSTIC`) also reports the
+Vulkan 1.3 `subgroupSizeControl` feature for compute:
+
+- `minSubgroupSize=32`, `maxSubgroupSize=64` and
+  `requiredSubgroupSizeStages=COMPUTE`.
+- A compute pipeline on a device that enabled the feature may chain
+  `VkPipelineShaderStageRequiredSubgroupSizeCreateInfo` with 32 or 64. It is
+  then compiled for and dispatched as wave32 or wave64, and cached under its
+  own key.
+- Without the structure, compute stays wave32.
+- `computeFullSubgroups` and varying subgroup sizes are not reported, and the
+  stage flags that request them are refused.
+
 - `robustBufferAccess` is reported true. Device creation accepts it through
   either `pEnabledFeatures` or the `VkPhysicalDeviceFeatures2` chain, rejects
   malformed booleans, and rejects every unreported core feature. Other

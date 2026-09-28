@@ -45,10 +45,12 @@ static VkResult runtime_compile_compute_features(
     VkPipelineLayout layout,
     const VkSpecializationInfo *specialization,
     uint32_t feature_mask,
+    uint32_t wave_size,
     struct ps5vk_compiled_program *out_program,
     uint32_t **out_code)
 {
-    if (!spirv || !spirv_words || !entry_name || !layout || !out_program || !out_code)
+    if (!spirv || !spirv_words || !entry_name || !layout || !out_program || !out_code ||
+        (wave_size != 32 && wave_size != 64))
         return VK_ERROR_UNKNOWN;
     *out_code = NULL;
     memset(out_program, 0, sizeof(*out_program));
@@ -195,6 +197,7 @@ static VkResult runtime_compile_compute_features(
     opts.enable_storage_buffer_8bit_access =
         !!(feature_mask & PS5VK_FEATURE_STORAGE_BUFFER_8BIT);
     opts.compute_buffer_spills = true;
+    opts.compute_wave_size = wave_size;
     opts.enable_int8 = !!(feature_mask & PS5VK_FEATURE_SHADER_INT8_COMPUTE);
     opts.enable_storage_buffer_16bit_access =
         !!(feature_mask & PS5VK_FEATURE_STORAGE_BUFFER_16BIT);
@@ -403,10 +406,11 @@ static VkResult runtime_compile_compute_features(
     out_program->code_words = out.machine_code_size / 4;
     out_program->entry = entry_name;
     out_program->gfx = 1013;
-    out_program->wave_size = 32;
+    out_program->wave_size = wave_size;
 
     uint32_t vgpr_granule = rsrc1 & 0x3fu;
-    out_program->vgprs = (vgpr_granule + 1u) * 8u;
+    /* COMPUTE_PGM_RSRC1.VGPRS counts 8 registers per step in wave32, 4 in wave64. */
+    out_program->vgprs = (vgpr_granule + 1u) * (out_program->wave_size == 64 ? 4u : 8u);
     out_program->sgprs = 32u; /* Conservative allocation bound within [1, 106] */
     out_program->float_mode = (rsrc1 >> 12) & 0xffu;
     out_program->ieee_mode = (rsrc1 >> 23) & 1u;
@@ -440,7 +444,7 @@ static VkResult runtime_compile_compute_features(
 struct compute_compile_call {
     const uint32_t *spirv; size_t spirv_words; const char *entry_name;
     VkPipelineLayout layout; const VkSpecializationInfo *specialization;
-    uint32_t feature_mask; struct ps5vk_compiled_program *out_program;
+    uint32_t feature_mask, wave_size; struct ps5vk_compiled_program *out_program;
     uint32_t **out_code; VkResult result;
 };
 
@@ -450,11 +454,32 @@ static void compute_compile_call(void *opaque)
     COMPUTE_MARK("PS5VK_COMPUTE_COMPILE phase=thread sp=%p stack_bytes=%zu",
                  (void *)&c, (size_t)PS5VK_COMPILE_STACK_BYTES);
     c->result = runtime_compile_compute_features(c->spirv, c->spirv_words, c->entry_name,
-        c->layout, c->specialization, c->feature_mask, c->out_program, c->out_code);
+        c->layout, c->specialization, c->feature_mask, c->wave_size, c->out_program, c->out_code);
 }
 
 /* The compile runs on a driver-sized stack (compile_stack.h): the calling
  * thread may be an application worker with a small default stack. */
+static VkResult compile_on_stack(
+    const uint32_t *spirv,
+    size_t spirv_words,
+    const char *entry_name,
+    VkPipelineLayout layout,
+    const VkSpecializationInfo *specialization,
+    uint32_t feature_mask,
+    uint32_t wave_size,
+    struct ps5vk_compiled_program *out_program,
+    uint32_t **out_code)
+{
+    struct compute_compile_call call = {spirv, spirv_words, entry_name, layout,
+        specialization, feature_mask, wave_size, out_program, out_code, VK_ERROR_UNKNOWN};
+    COMPUTE_MARK("PS5VK_COMPUTE_COMPILE phase=spawn words=%zu", spirv_words);
+    if (ps5vk_compile_on_sized_stack(compute_compile_call, &call))
+        return VK_ERROR_OUT_OF_HOST_MEMORY;
+    COMPUTE_MARK("PS5VK_COMPUTE_COMPILE phase=joined rc=%d descriptors=%u",
+                 (int)call.result, out_program->descriptor_count);
+    return call.result;
+}
+
 VkResult ps5vk_runtime_compile_compute_features(
     const uint32_t *spirv,
     size_t spirv_words,
@@ -465,14 +490,8 @@ VkResult ps5vk_runtime_compile_compute_features(
     struct ps5vk_compiled_program *out_program,
     uint32_t **out_code)
 {
-    struct compute_compile_call call = {spirv, spirv_words, entry_name, layout,
-        specialization, feature_mask, out_program, out_code, VK_ERROR_UNKNOWN};
-    COMPUTE_MARK("PS5VK_COMPUTE_COMPILE phase=spawn words=%zu", spirv_words);
-    if (ps5vk_compile_on_sized_stack(compute_compile_call, &call))
-        return VK_ERROR_OUT_OF_HOST_MEMORY;
-    COMPUTE_MARK("PS5VK_COMPUTE_COMPILE phase=joined rc=%d descriptors=%u",
-                 (int)call.result, out_program->descriptor_count);
-    return call.result;
+    return compile_on_stack(spirv, spirv_words, entry_name, layout, specialization,
+        feature_mask, 32, out_program, out_code);
 }
 
 VkResult ps5vk_runtime_compile_compute(
@@ -492,10 +511,11 @@ VkResult ps5vk_compiler_adapter_compile(
     VkPipelineLayout layout,
     const VkSpecializationInfo *specialization,
     uint32_t feature_mask,
+    uint32_t wave_size,
     struct ps5vk_compiled_program *out_program,
     uint32_t **out_code)
 {
     (void)context;
-    return ps5vk_runtime_compile_compute_features(spirv, spirv_words, entry_name,
-        layout, specialization, feature_mask, out_program, out_code);
+    return compile_on_stack(spirv, spirv_words, entry_name, layout, specialization,
+        feature_mask, wave_size, out_program, out_code);
 }

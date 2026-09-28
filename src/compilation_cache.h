@@ -13,8 +13,9 @@ extern "C" {
 
 #define PS5VK_COMPILER_ID_PSBC_ACO  UINT32_C(0x50534243) /* "PSBC" */
 /* Bump with any change to generated code so persisted programs are rejected.
- * 2: compute kernels keep weak FMAs fused (tools/psbc-compute-fused-fma.patch). */
-#define PS5VK_COMPILER_VERSION      UINT32_C(2)
+ * 2: compute kernels keep weak FMAs fused (tools/psbc-compute-fused-fma.patch).
+ * 3: compute programs and their cache keys carry the wave size. */
+#define PS5VK_COMPILER_VERSION      UINT32_C(3)
 #define PS5VK_CACHE_ABI_VERSION_1   UINT32_C(1)
 #define PS5VK_MAX_SPECIALIZATION_CONSTANTS 64u
 #define PS5VK_MAX_SPECIALIZATION_BYTES 8u
@@ -33,6 +34,7 @@ struct ps5vk_cache_key {
     uint32_t compiler_version;  /* Compiler implementation version */
     uint32_t abi_version;       /* ABI version */
     uint32_t flags;             /* Optimization / compilation flags */
+    uint32_t wave_size;         /* Compute wave size (32 or 64); 0 outside compute */
     char entry_name[64];        /* Entry point string */
     uint32_t set_count;
     struct {

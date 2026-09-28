@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 from lab import lab_root
@@ -14,7 +15,9 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE_PATCHES = (
     ROOT / "tools/psbc-compute-buffer-spills.patch",
     ROOT / "tools/psbc-compute-fused-fma.patch",
+    ROOT / "tools/psbc-compute-wave-size.patch",
 )
+SERIES_STAMP = ".ps5-fsr4-patch-series.json"
 
 
 def source_patch_digest() -> str:
@@ -22,6 +25,32 @@ def source_patch_digest() -> str:
     for patch in SOURCE_PATCHES:
         digest.update(patch.name.encode() + b"\0" + hashlib.sha256(patch.read_bytes()).digest())
     return digest.hexdigest()
+
+
+def apply_source_patches(psbc_dir: Path) -> None:
+    """Bring the pinned tree to exactly its revision plus SOURCE_PATCHES, in order.
+
+    A stamp in the tree records the applied series and the files it touched.
+    When the series changes, those files return to the pinned revision and the
+    whole series is applied again, so later patches may build on earlier ones.
+    """
+    stamp = psbc_dir / SERIES_STAMP
+    digest = source_patch_digest()
+    previous = json.loads(stamp.read_text()) if stamp.is_file() else {}
+    if previous.get("digest") == digest:
+        return
+    files = set(previous.get("files", []))
+    for patch in SOURCE_PATCHES:
+        files |= set(re.findall(r"^\+\+\+ b/(\S+)", patch.read_text(), re.M))
+    tracked = subprocess.run(["git", "ls-files", "--", *sorted(files)], cwd=psbc_dir,
+                             check=True, capture_output=True, text=True).stdout.split()
+    if tracked:
+        subprocess.run(["git", "checkout", "HEAD", "--", *tracked], cwd=psbc_dir, check=True)
+    for name in files - set(tracked):
+        (psbc_dir / name).unlink(missing_ok=True)
+    for patch in SOURCE_PATCHES:
+        subprocess.run(["git", "apply", str(patch)], cwd=psbc_dir, check=True)
+    stamp.write_text(json.dumps({"digest": digest, "files": sorted(files)}, indent=2) + "\n")
 
 
 def write_identity(out_lib: Path, psbc_dir: Path, target: str) -> None:
@@ -164,12 +193,7 @@ def main():
     if not (psbc_dir / "libpsbc/psbc_compile.c").is_file():
         sys.exit(f"PSBC source tree not found or incomplete at {psbc_dir}")
 
-    for patch in SOURCE_PATCHES:
-        applied = subprocess.run(["git", "apply", "--reverse", "--check", str(patch)],
-                                 cwd=psbc_dir, capture_output=True).returncode == 0
-        if not applied:
-            subprocess.run(["git", "apply", "--check", str(patch)], cwd=psbc_dir, check=True)
-            subprocess.run(["git", "apply", str(patch)], cwd=psbc_dir, check=True)
+    apply_source_patches(psbc_dir)
 
     if is_host:
         makefile = ROOT / "tools/Makefile.psbc-host"
