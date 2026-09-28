@@ -7,8 +7,9 @@
 #include <sys/mman.h>
 
 /* Runs native prepare/release with explicit host syscall doubles. No DCB is
- * submitted and no shader is executed or computed on the CPU. A job owns only
- * its command memory; shader code stays resident on its pipeline and the
+ * submitted and no shader is executed or computed on the CPU. A job borrows
+ * the device's command region (or maps its own while that one is lent); shader
+ * code stays resident on its pipeline and the command region and the
  * descriptor-table and scratch arenas on the device, until their teardown. */
 static unsigned reservations, physicals, mappings, arenas, slots, attempts, submissions;
 static unsigned fail_reserve, fail_physical, fail_arena;
@@ -75,9 +76,13 @@ VkBool32 ps5vk_buffer_usage(VkDevice d,VkBuffer b,VkBufferUsageFlags usage)
 VkResult ps5vk_buffer_cache(VkDevice d,VkBuffer b,VkDeviceSize off,
                             VkDeviceSize range,VkBool32 invalidate)
 { (void)d;(void)b;(void)off;(void)range;(void)invalidate;return VK_SUCCESS; }
-/* Nothing a job owns survives it; resident arenas are counted separately. */
-static void clean(unsigned resident)
-{ assert(arenas == resident && !mappings && !physicals && !reservations && !submissions); }
+/* Nothing a job owns survives it; resident arenas and the device's command
+ * region (once a prepare has mapped it) are counted separately. */
+static void clean(unsigned resident, unsigned region)
+{
+    assert(arenas == resident && mappings == region && physicals == region && reservations == region &&
+           !submissions);
+}
 static void release_code(struct VkPipeline_T *pipeline)
 {
     if (pipeline->native_code_backing) release(NULL, pipeline->native_code_backing);
@@ -114,28 +119,34 @@ int main(void)
     struct ps5vk_submission submit = {.serial = 1, .count = 1, .buffers = {&cb}};
     void *job = NULL;
     fail_reserve = 1;
-    assert(device.submit_backend.prepare(&device, &submit, &job) != VK_SUCCESS && !job); clean(0);
+    assert(device.submit_backend.prepare(&device, &submit, &job) != VK_SUCCESS && !job); clean(0, 0);
     fail_reserve = 0; fail_physical = 1;
-    assert(device.submit_backend.prepare(&device, &submit, &job) != VK_SUCCESS && !job); clean(0);
-    /* Code residency fails first: nothing is kept. */
+    assert(device.submit_backend.prepare(&device, &submit, &job) != VK_SUCCESS && !job); clean(0, 0);
+    /* Code residency fails first: nothing of the job is kept; the command
+     * region it borrowed stays with the device. */
     fail_physical = 0; fail_arena = attempts + 1;
-    assert(device.submit_backend.prepare(&device, &submit, &job) != VK_SUCCESS && !job); clean(0);
+    assert(device.submit_backend.prepare(&device, &submit, &job) != VK_SUCCESS && !job); clean(0, 1);
     assert(!pipeline->native_code);
     /* Then the tables arena: the resident code belongs to the pipeline. */
     fail_arena = attempts + 2;
-    assert(device.submit_backend.prepare(&device, &submit, &job) != VK_SUCCESS && !job); clean(1);
+    assert(device.submit_backend.prepare(&device, &submit, &job) != VK_SUCCESS && !job); clean(1, 1);
     assert(pipeline->native_code && !device.compute_tables.bytes);
     fail_arena = 0; set.defined[0] = VK_FALSE;
-    assert(device.submit_backend.prepare(&device, &submit, &job) != VK_SUCCESS && !job); clean(2);
+    assert(device.submit_backend.prepare(&device, &submit, &job) != VK_SUCCESS && !job); clean(2, 1);
     set.defined[0] = VK_TRUE;
     assert(device.submit_backend.prepare(&device, &submit, &job) == VK_SUCCESS && job);
     assert(arenas == 2 && mappings == 1 && !submissions);
-    device.submit_backend.release(&device, job); clean(2);
-    /* A second job reuses the resident code and the device arena. */
+    device.submit_backend.release(&device, job); clean(2, 1);
+    /* A second job reuses the resident code, the device arena and the region. */
     const unsigned before = attempts;
     assert(device.submit_backend.prepare(&device, &submit, &job) == VK_SUCCESS && job);
-    assert(attempts == before);
-    device.submit_backend.release(&device, job); clean(2);
+    assert(attempts == before && mappings == 1);
+    /* A job prepared while the region is lent maps its own and unmaps it on release. */
+    void *second = NULL;
+    assert(device.submit_backend.prepare(&device, &submit, &second) == VK_SUCCESS && second);
+    assert(mappings == 2 && physicals == 2 && reservations == 2);
+    device.submit_backend.release(&device, second); clean(2, 1);
+    device.submit_backend.release(&device, job); clean(2, 1);
 
     /* Physical-address shaders can use push constants without any descriptor
      * set. The native queue still needs a mapped staging-table anchor to
@@ -156,7 +167,7 @@ int main(void)
         .serial = 2, .count = 1, .buffers = {&address_cb}};
     assert(device.submit_backend.prepare(&device, &address_submit, &job) == VK_SUCCESS && job);
     assert(arenas == 3 && mappings == 1 && !submissions);
-    device.submit_backend.release(&device, job); clean(3);
+    device.submit_backend.release(&device, job); clean(3, 1);
 
     /* The compute backend consumes the submitted range directly. Event
      * operations outside it are invisible; one inside it fails closed before
@@ -170,15 +181,16 @@ int main(void)
     submit.operation_count[0] = 1;
     assert(device.submit_backend.prepare(&device, &submit, &job) == VK_SUCCESS && job);
     assert(arenas == 3 && mappings == 1 && !submissions);
-    device.submit_backend.release(&device, job); clean(3);
+    device.submit_backend.release(&device, job); clean(3, 1);
     submit.first_operation[0] = 0;
     submit.operation_count[0] = 2;
     assert(device.submit_backend.prepare(&device, &submit, &job) == VK_ERROR_FEATURE_NOT_PRESENT && !job);
-    clean(3);
+    clean(3, 1);
     release_code(&address_pipeline);
     release_code(pipeline);
     release_device_arenas(&device);
-    clean(0);
+    device.queue_teardown(&device);
+    clean(0, 0);
     free(pipeline);
     puts("Native prepare rollback: pass (host syscall doubles, no GPU execution)");
 }

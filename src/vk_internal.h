@@ -441,6 +441,10 @@ struct VkDevice_T {
     /* Native compute arenas reused by successive synchronous jobs: shader
      * scratch (never zeroed per dispatch) and descriptor tables. */
     struct ps5vk_device_arena { void *address, *backing; size_t bytes; } compute_scratch, compute_tables;
+    /* State a queue backend keeps across its synchronous jobs (the native
+     * command stream); queue_teardown releases it when the device is destroyed. */
+    void *queue_state;
+    void (*queue_teardown)(VkDevice);
     VkAllocationCallbacks allocator;
     VkBool32 custom_allocator;
     /* Enabled only for a device with a native presentation backend. */

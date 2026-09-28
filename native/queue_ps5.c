@@ -17,17 +17,31 @@ enum { COMMAND_BYTES = 131072, ALIGNMENT = 65536, MAX_DISPATCHES =
         * dispatches must never reach the words its packets write. */
        READBACK_OFFSET = COMMAND_BYTES - 0x100, LABEL_OFFSET = COMMAND_BYTES - 0x80,
        STREAM_BYTES = COMMAND_BYTES - 0x200, WAIT_WORDS = 7 };
+/* How long a submission polls its completion label before it sleeps between polls. */
+#define SPIN_NS UINT64_C(50000000)
 struct prepared_dispatch {
     void *arena, *backing;
     size_t bytes, words, scratch_offset, scratch_bytes;
     uint32_t packet[PS5VK_COMPUTE_COMMAND_CAPACITY + 8];
 };
-struct native_job {
-    uint64_t serial;
+/* The command stream and its control words, in the special command mapping. */
+struct command_region {
     void *command;
     int64_t physical;
-    unsigned reserved, mapped, count, completed, attempted;
-    struct prepared_dispatch dispatches[MAX_DISPATCHES];
+    unsigned reserved, mapped;
+};
+/* Jobs are synchronous, so one mapped region serves them all: a job borrows it
+ * and returns it on release. A job prepared while it is still lent maps its own. */
+struct queue_state {
+    struct command_region region;
+    unsigned lent;
+};
+struct native_job {
+    uint64_t serial;
+    struct command_region region;
+    void *command;
+    unsigned borrowed, count, completed, attempted;
+    struct prepared_dispatch dispatches[];
 };
 static void cache(const void *address, size_t size)
 {
@@ -53,24 +67,78 @@ static void retain(const char *reason)
     ps5log_close("queue-ownership-retained");
     for (;;) sleep(1);
 }
-static void release(VkDevice device, void *opaque)
+static int map_region(struct command_region *r)
 {
-    struct native_job *job = opaque;
-    if (job->attempted && job->completed != job->count) retain("release-inflight");
-    if (job->mapped) {
-        struct ps5_batch_map_entry e = {job->command, 0, COMMAND_BYTES, 0xf2, 0x0c, 0, 1};
+    r->physical = -1;
+    if (sceKernelReserveVirtualRange(&r->command, COMMAND_BYTES, 0, ALIGNMENT)) return -1;
+    r->reserved = 1;
+    if (sceKernelAllocateMainDirectMemory(COMMAND_BYTES, ALIGNMENT, 0x0c, &r->physical)) return -1;
+    struct ps5_batch_map_entry entry = {r->command, r->physical, COMMAND_BYTES, 0xf2, 0x0c, 0, 0};
+    int processed = 0;
+    int map_rc = sceKernelBatchMap(&entry, 1, &processed);
+    /* Partial mapping is not safe to unwind as though no mapping existed. */
+    if (map_rc || processed != 1) retain("command-map-ambiguous");
+    r->mapped = 1;
+    return 0;
+}
+static void unmap_region(struct command_region *r)
+{
+    if (r->mapped) {
+        struct ps5_batch_map_entry e = {r->command, 0, COMMAND_BYTES, 0xf2, 0x0c, 0, 1};
         int processed = 0;
         if (sceKernelBatchMap(&e, 1, &processed) || processed != 1)
             retain("command-unmap");
     }
-    if (job->physical >= 0 && sceKernelReleaseDirectMemory(job->physical, COMMAND_BYTES))
+    if (r->physical >= 0 && sceKernelReleaseDirectMemory(r->physical, COMMAND_BYTES))
         retain("command-physical-release");
-    if (job->reserved && sceKernelMunmap(job->command, COMMAND_BYTES))
+    if (r->reserved && sceKernelMunmap(r->command, COMMAND_BYTES))
         retain("command-reservation-release");
+    memset(r, 0, sizeof(*r));
+    r->physical = -1;
+}
+static void release(VkDevice device, void *opaque)
+{
+    struct native_job *job = opaque;
+    if (job->attempted && job->completed != job->count) retain("release-inflight");
+    if (job->borrowed) ((struct queue_state *)device->queue_state)->lent = 0;
+    else unmap_region(&job->region);
     for (unsigned i = 0; i < job->count; ++i)
         if (job->dispatches[i].backing)
             device->memory.release(device->memory.context, job->dispatches[i].backing);
     free(job);
+}
+static void teardown(VkDevice device)
+{
+    struct queue_state *state = device->queue_state;
+    if (!state) return;
+    if (state->lent) retain("teardown-lent-command-region");
+    unmap_region(&state->region);
+    free(state);
+    device->queue_state = NULL;
+}
+/* The command region for a new job: the device's, or a job-owned one while it is lent. */
+static VkResult acquire_region(VkDevice device, struct native_job *job)
+{
+    struct queue_state *state = device->queue_state;
+    if (!state) {
+        state = calloc(1, sizeof(*state));
+        if (!state) return VK_ERROR_OUT_OF_HOST_MEMORY;
+        state->region.physical = -1;
+        if (map_region(&state->region)) {
+            unmap_region(&state->region);
+            free(state);
+            return VK_ERROR_OUT_OF_DEVICE_MEMORY;
+        }
+        device->queue_state = state;
+    }
+    if (!state->lent) {
+        state->lent = job->borrowed = 1;
+        job->command = state->region.command;
+        return VK_SUCCESS;
+    }
+    if (map_region(&job->region)) return VK_ERROR_OUT_OF_DEVICE_MEMORY;
+    job->command = job->region.command;
+    return VK_SUCCESS;
 }
 /* Bytes one dispatch takes from the tables arena: its set tables (at least the
  * 512-byte anchor) followed by its push constants, on a 256-byte boundary. */
@@ -141,19 +209,23 @@ static VkResult prepare(VkDevice device, const struct ps5vk_submission *submissi
     *out = NULL;
     /* Reserve low bits for exact per-dispatch tokens. No token truncation. */
     if (!submission->serial || submission->serial > UINT32_MAX) return VK_ERROR_UNKNOWN;
-    struct native_job *job = calloc(1, sizeof(*job));
+    /* The job holds one prepared packet per dispatch it carries, not the maximum. */
+    size_t dispatches = 0;
+    for (unsigned b = 0; b < submission->count; ++b) {
+        VkCommandBuffer cb = submission->buffers[b];
+        uint32_t first = ps5vk_submission_first_operation(submission, b);
+        uint32_t count = ps5vk_submission_operation_count(submission, b);
+        if (first > cb->operation_count || count > cb->operation_count - first) return VK_ERROR_UNKNOWN;
+        for (uint32_t i = first; i < first + count; ++i)
+            dispatches += cb->operations[i].type == PS5VK_DISPATCH ||
+                          ps5vk_indirect_compute_operation(cb->operations[i].type);
+    }
+    if (dispatches > MAX_DISPATCHES) return VK_ERROR_UNKNOWN;
+    struct native_job *job = calloc(1, sizeof(*job) + dispatches * sizeof(struct prepared_dispatch));
     if (!job) return VK_ERROR_OUT_OF_HOST_MEMORY;
-    job->physical = -1; job->serial = submission->serial;
-    VkResult result = VK_ERROR_OUT_OF_DEVICE_MEMORY;
-    if (sceKernelReserveVirtualRange(&job->command, COMMAND_BYTES, 0, ALIGNMENT)) goto fail;
-    job->reserved = 1;
-    if (sceKernelAllocateMainDirectMemory(COMMAND_BYTES, ALIGNMENT, 0x0c, &job->physical)) goto fail;
-    struct ps5_batch_map_entry entry = {job->command, job->physical, COMMAND_BYTES, 0xf2, 0x0c, 0, 0};
-    int processed = 0;
-    int map_rc = sceKernelBatchMap(&entry, 1, &processed);
-    /* Partial mapping is not safe to unwind as though no mapping existed. */
-    if (map_rc || processed != 1) retain("command-map-ambiguous");
-    job->mapped = 1;
+    job->region.physical = -1; job->serial = submission->serial;
+    VkResult result = acquire_region(device, job);
+    if (result != VK_SUCCESS) goto fail;
     /* Pass 1: size the job. Shader code becomes resident per pipeline; tables,
      * push constants and scratch come from device arenas reused by every job.
      * Jobs are synchronous, so no earlier job still reads those arenas. */
@@ -223,7 +295,7 @@ static VkResult prepare(VkDevice device, const struct ps5vk_submission *submissi
             if (op->type != PS5VK_DISPATCH) {
                 result = VK_ERROR_FEATURE_NOT_PRESENT; goto fail;
             }
-            if (job->count == MAX_DISPATCHES) { result = VK_ERROR_UNKNOWN; goto fail; }
+            if (job->count == dispatches) { result = VK_ERROR_UNKNOWN; goto fail; }
             struct prepared_dispatch *p = &job->dispatches[job->count++];
             const struct ps5vk_compiled_program *program = &op->pipeline->program;
             /* Each set's table is as long as the records the program reads
@@ -311,7 +383,6 @@ static VkResult launch(VkDevice device, void *opaque)
      * and only the last one keeps the template tail: readbacks and the GL2
      * write-back RELEASE_MEM that publishes the completion token. */
     for (unsigned first = 0; first < job->count;) {
-        memset(job->command, 0, COMMAND_BYTES);
         uint32_t *stream = job->command;
         size_t words = 0, chain_words = 0;
         unsigned last = first;
@@ -326,8 +397,13 @@ static VkResult launch(VkDevice device, void *opaque)
             if (i > first) stream[words + 7] = ACQUIRE_WITHOUT_GL2;
             words += count;
         }
+        /* The CP reads the stream's words and the packets write only the control
+         * words, so only those are published; the reused region's label may
+         * still hold an earlier job's token. */
+        *label = 0;
         readback[3] = 0xdeadbeef;
-        cache(job->command, COMMAND_BYTES);
+        cache(stream, words * 4);
+        cache(readback, COMMAND_BYTES - READBACK_OFFSET);
         struct ps5_agc_submit submit = {job->command, (uint32_t)words, 0, {0, 0, 0}};
         job->attempted = 1;
         struct ps5vk_submit_result result=ps5vk_submit_suspend(&submit);
@@ -344,10 +420,15 @@ static VkResult launch(VkDevice device, void *opaque)
             uint64_t observed = __atomic_load_n(label, __ATOMIC_ACQUIRE);
             if (observed == token) break;
             /* Earlier dispatches of this chain legitimately publish lower tokens. */
+            const uint64_t waited = clock_ns(NULL) - start;
             if ((observed && (observed >> 32) != job->serial) ||
-                (uint32_t)observed > last || !start || clock_ns(NULL) - start > budget)
+                (uint32_t)observed > last || !start || waited > budget)
                 return VK_ERROR_DEVICE_LOST;
-            usleep(50);
+            /* A sleep lasts at least one kernel timer tick, which on some system
+             * software is 15.6 ms: longer than a whole frame of work. Jobs are
+             * synchronous, so spin on the label while a job is young. */
+            if (waited < SPIN_NS) __builtin_ia32_pause();
+            else usleep(50);
         }
         cache(readback, 16);
         if (readback[3] != 0) return VK_ERROR_DEVICE_LOST;
@@ -373,5 +454,6 @@ void ps5vk_native_queue_configure(VkDevice device)
 {
     device->graphics_submit_enabled = VK_FALSE;
     device->submit_backend = (struct ps5vk_queue_backend){prepare, launch, poll, release};
+    device->queue_teardown = teardown;
     device->progress = (struct ps5vk_progress){NULL, ps5vk_queue_poll, clock_ns, pause_ns};
 }
