@@ -769,7 +769,7 @@ static void bda_storage_image_trace(void)
     VkImageFormatProperties properties={0};
     assert(ps5vk_graphics_image_properties(VK_FORMAT_R32_UINT,VK_IMAGE_TYPE_2D,
         VK_IMAGE_TILING_OPTIMAL,usage,0,1u<<20,&properties)==VK_SUCCESS);
-#if PS5VK_FSR4_STORAGE_DIAGNOSTIC
+#if PS5VK_EXTENDED_COMPUTE_DIAGNOSTIC
     assert(properties.maxExtent.width==1920 && properties.maxExtent.height==1080);
 #else
     assert(properties.maxExtent.width==8 && properties.maxExtent.height==8);
@@ -1268,8 +1268,8 @@ static void bgra_tiled_transfer_destination(void)
     vkDestroyImage(device, target, NULL);
 }
 
-#if PS5VK_FSR4_STORAGE_DIAGNOSTIC
-static void fsr4_storage_round_trip(void)
+#if PS5VK_EXTENDED_COMPUTE_DIAGNOSTIC
+static void extended_storage_round_trip(void)
 {
     const VkFormat formats[]={VK_FORMAT_R32_UINT,VK_FORMAT_R32_SFLOAT,
         VK_FORMAT_R8G8B8A8_UNORM,VK_FORMAT_R16G16B16A16_SFLOAT,
@@ -1355,8 +1355,8 @@ int main(void)
     /* Mid-gray sRGB must retain precision before filtering (132/255). */
     assert(fabsf(ps5vk_bc_blit_srgb_to_linear(132)-0.23074005f)<0.000001f);
     bda_storage_image_trace();
-#if PS5VK_FSR4_STORAGE_DIAGNOSTIC
-    fsr4_storage_round_trip();
+#if PS5VK_EXTENDED_COMPUTE_DIAGNOSTIC
+    extended_storage_round_trip();
 #endif
     readback_return_recording();
     bc_block_transfer_round_trip();

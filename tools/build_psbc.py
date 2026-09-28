@@ -17,7 +17,8 @@ SOURCE_PATCHES = (
     ROOT / "tools/psbc-compute-fused-fma.patch",
     ROOT / "tools/psbc-compute-wave-size.patch",
 )
-SERIES_STAMP = ".ps5-fsr4-patch-series.json"
+SERIES_STAMP = ".ps5vk-patch-series.json"
+LEGACY_SERIES_STAMP = ".ps5-fsr4-patch-series.json"
 
 
 def source_patch_digest() -> str:
@@ -35,6 +36,9 @@ def apply_source_patches(psbc_dir: Path) -> None:
     whole series is applied again, so later patches may build on earlier ones.
     """
     stamp = psbc_dir / SERIES_STAMP
+    legacy = psbc_dir / LEGACY_SERIES_STAMP
+    if legacy.is_file() and not stamp.is_file():
+        legacy.rename(stamp)
     digest = source_patch_digest()
     previous = json.loads(stamp.read_text()) if stamp.is_file() else {}
     if previous.get("digest") == digest:

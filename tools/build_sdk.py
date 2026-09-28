@@ -314,11 +314,11 @@ def main():
             raise SystemExit("PS5VK_SUBGROUP_ALL_DIAGNOSTIC must be 0 or 1")
         if subgroup_all_diagnostic == "1":
             native_cflags.append("-DPS5VK_SUBGROUP_ALL_DIAGNOSTIC=1")
-        fsr4_storage_diagnostic = os.environ.get("PS5VK_FSR4_STORAGE_DIAGNOSTIC", "0")
-        if fsr4_storage_diagnostic not in ("0", "1"):
-            raise SystemExit("PS5VK_FSR4_STORAGE_DIAGNOSTIC must be 0 or 1")
-        if fsr4_storage_diagnostic == "1":
-            native_cflags.append("-DPS5VK_FSR4_STORAGE_DIAGNOSTIC=1")
+        extended_compute_diagnostic = os.environ.get("PS5VK_EXTENDED_COMPUTE_DIAGNOSTIC", "0")
+        if extended_compute_diagnostic not in ("0", "1"):
+            raise SystemExit("PS5VK_EXTENDED_COMPUTE_DIAGNOSTIC must be 0 or 1")
+        if extended_compute_diagnostic == "1":
+            native_cflags.append("-DPS5VK_EXTENDED_COMPUTE_DIAGNOSTIC=1")
         shader_int16_diagnostic = os.environ.get("PS5VK_SHADER_INT16_DIAGNOSTIC", "0")
         if shader_int16_diagnostic not in ("0", "1"):
             raise SystemExit("PS5VK_SHADER_INT16_DIAGNOSTIC must be 0 or 1")

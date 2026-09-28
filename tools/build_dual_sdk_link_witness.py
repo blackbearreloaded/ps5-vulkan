@@ -140,7 +140,7 @@ def main():
     if str(compiler_isolated) not in map_text or str(gl_compiler) not in map_text:
         raise ValueError("Link map does not include both PSBC archives")
     report = {
-        "schema": "ps5-fsr4-dual-sdk-link-witness/1",
+        "schema": "ps5vk-dual-sdk-link-witness/1",
         "scope": "native ELF cross-link only; no PS5 launch, compiler invocation or GL/Vulkan sharing",
         "opengl_manifest_sha256": sha256(manifest),
         "opengl_facade": facade.name,

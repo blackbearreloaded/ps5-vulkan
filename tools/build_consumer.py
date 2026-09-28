@@ -423,7 +423,6 @@ def main():
     artifact = {
         "title": "PPSA88900",
         "hardware_tested": False,
-        "fsr4_implemented": False,
         "profile": "public-consumer-resource-abi",
         "submit_enabled": True,
         "files": files,
@@ -687,7 +686,7 @@ def main():
                 for kind in ("float", "uint", "sint")
             },
         }
-    artifact.update(hardware_tested=False, fsr4_implemented=False)
+    artifact.update(hardware_tested=False)
     artifact_path = DIST_DIR.parent / "artifact.json"
     artifact_path.write_text(json.dumps(artifact, indent=2) + "\n")
 

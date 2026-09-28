@@ -66,7 +66,7 @@ and `quadOperationsInAllStages=false`. Elect, subgroup barriers and built-ins
 have a native witness. This does not report BALLOT, ARITHMETIC,
 `shaderSubgroupExtendedTypes` or `subgroupBroadcastDynamicId`.
 
-The FSR4 driver profile (`PS5VK_FSR4_STORAGE_DIAGNOSTIC`) also reports the
+The extended compute profile (`PS5VK_EXTENDED_COMPUTE_DIAGNOSTIC`) also reports the
 Vulkan 1.3 `subgroupSizeControl` feature for compute:
 
 - `minSubgroupSize=32`, `maxSubgroupSize=64` and

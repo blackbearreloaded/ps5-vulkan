@@ -732,10 +732,10 @@ fsr4-dxil-converter:
 		-Wl,-rpath,'$$ORIGIN/dxil-spirv' -o build/fsr4_dxil_to_spirv
 	build/fsr4_dxil_to_spirv --self-test
 
-.PHONY: test-fsr4-storage
-test-fsr4-storage:
+.PHONY: test-extended-compute
+test-extended-compute:
 	mkdir -p build/tests
-	$(CC) -std=c11 -g -Wall -Wextra -Werror -fsanitize=address,undefined -DPS5VK_FSR4_STORAGE_DIAGNOSTIC=1 $(VULKAN_CFLAGS) -Isrc src/descriptor_encode.c src/texture_format.c src/texture_descriptor.c src/texture_layout.c src/depth_layout.c tests/test_descriptor_encode.c -o build/tests/test_fsr4_descriptor
-	./build/tests/test_fsr4_descriptor
-	$(CC) -std=c11 -g -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer -DPS5VK_FSR4_STORAGE_DIAGNOSTIC=1 $(VULKAN_CFLAGS) -Isrc $(VK_DEVICE_SOURCES) src/platform_host.c src/depth_layout.c native/image_ps5.c tests/test_image_copy_clear.c -o build/tests/test_fsr4_image_copy
-	./build/tests/test_fsr4_image_copy
+	$(CC) -std=c11 -g -Wall -Wextra -Werror -fsanitize=address,undefined -DPS5VK_EXTENDED_COMPUTE_DIAGNOSTIC=1 $(VULKAN_CFLAGS) -Isrc src/descriptor_encode.c src/texture_format.c src/texture_descriptor.c src/texture_layout.c src/depth_layout.c tests/test_descriptor_encode.c -o build/tests/test_extended_descriptor
+	./build/tests/test_extended_descriptor
+	$(CC) -std=c11 -g -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer -DPS5VK_EXTENDED_COMPUTE_DIAGNOSTIC=1 $(VULKAN_CFLAGS) -Isrc $(VK_DEVICE_SOURCES) src/platform_host.c src/depth_layout.c native/image_ps5.c tests/test_image_copy_clear.c -o build/tests/test_extended_image_copy
+	./build/tests/test_extended_image_copy

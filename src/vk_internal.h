@@ -251,15 +251,16 @@ enum ps5vk_t09_feature_bits {
      * subgroup built-ins) for a private measurement build. Not a subgroup
      * properties promise: VkPhysicalDeviceSubgroupProperties stays zero. */
     PS5VK_T09_FEATURE_SUBGROUP_BASIC_COMPUTE = 1u << 28,
-    /* Private FSR4 measurement: OpGroupNonUniformAll only, not public VOTE. */
+    /* Private measurement build: OpGroupNonUniformAll only, not public VOTE. */
     PS5VK_T09_FEATURE_SUBGROUP_ALL_COMPUTE = 1u << 29,
-    /* Private FSR4 image-stage witness, not public QUAD support. */
+    /* Extended compute profile image-stage witness, not public QUAD support. */
     PS5VK_T09_FEATURE_SUBGROUP_QUAD_COMPUTE = 1u << 30,
     /* Vulkan 1.3 subgroupSizeControl for compute: a pipeline may require
      * subgroup size 32 (the default wave32 dispatch) or 64 (wave64), and
      * requiredSubgroupSizeStages is the compute stage. Varying subgroup sizes
-     * and computeFullSubgroups are not implemented. Only the FSR4 witness
-     * build sets it: its native acceptance matrix ran wave64 passes. */
+     * and computeFullSubgroups are not implemented. Only the extended
+     * compute profile sets it; the FSR4 port's native acceptance matrix ran
+     * wave64 passes. */
     PS5VK_T09_FEATURE_SUBGROUP_SIZE_CONTROL = 1u << 22,
     /* A second, HOST_COHERENT memory type whose coherence the driver keeps at
      * map/unmap and submission boundaries (src/physical_device_profile.h).
