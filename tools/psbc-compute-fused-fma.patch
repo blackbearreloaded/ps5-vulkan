@@ -1,0 +1,37 @@
+diff --git a/src/amd/vulkan/radv_shader.c b/src/amd/vulkan/radv_shader.c
+--- a/src/amd/vulkan/radv_shader.c
++++ b/src/amd/vulkan/radv_shader.c
+@@ -479,6 +479,22 @@
+    }
+ }
+ 
++/* PSBC: GFX10.1 prefers splitting weak (GLSL) FMAs into MUL+ADD so that they
++ * can become legacy MADs. In large compute reductions CSE then shares the split
++ * products between accumulators, and those long-lived products spill heavily:
++ * FSR4's network passes lose most of their time to scratch traffic. Compute
++ * kernels keep the fused form instead, which runs at full rate on GFX10.1. */
++static bool
++psbc_fuse_weak_ffma32(nir_builder *b, nir_alu_instr *alu, void *data)
++{
++   (void)b;
++   (void)data;
++   if (alu->op != nir_op_ffma_weak || alu->def.bit_size != 32)
++      return false;
++   alu->op = nir_op_ffma;
++   return true;
++}
++
+ nir_shader *
+ radv_shader_spirv_to_nir(const struct radv_compiler_info *compiler_info, struct radv_shader_stage *stage,
+                          const struct radv_spirv_to_nir_options *options, bool is_internal)
+@@ -553,6 +569,10 @@
+       assert(nir->info.stage == stage->stage);
+       nir_validate_shader(nir, "after spirv_to_nir");
+ 
++      /* PSBC: see psbc_fuse_weak_ffma32. */
++      if (nir->info.stage == MESA_SHADER_COMPUTE)
++         NIR_PASS(_, nir, nir_shader_alu_pass, psbc_fuse_weak_ffma32, nir_metadata_control_flow, NULL);
++
+       vtn_free_specialization(spec);
+ 
+       const struct nir_lower_sysvals_to_varyings_options sysvals_to_varyings = {

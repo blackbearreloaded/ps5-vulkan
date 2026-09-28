@@ -10,6 +10,18 @@ import sys
 from lab import lab_root
 
 ROOT = Path(__file__).resolve().parents[1]
+# Applied in order to the pinned PSBC tree; the archive identity records them.
+SOURCE_PATCHES = (
+    ROOT / "tools/psbc-compute-buffer-spills.patch",
+    ROOT / "tools/psbc-compute-fused-fma.patch",
+)
+
+
+def source_patch_digest() -> str:
+    digest = hashlib.sha256()
+    for patch in SOURCE_PATCHES:
+        digest.update(patch.name.encode() + b"\0" + hashlib.sha256(patch.read_bytes()).digest())
+    return digest.hexdigest()
 
 
 def write_identity(out_lib: Path, psbc_dir: Path, target: str) -> None:
@@ -19,7 +31,7 @@ def write_identity(out_lib: Path, psbc_dir: Path, target: str) -> None:
         "schema": 1,
         "target": target,
         "source_commit": revision,
-        "source_patch_sha256": hashlib.sha256((ROOT / "tools/psbc-compute-buffer-spills.patch").read_bytes()).hexdigest(),
+        "source_patch_sha256": source_patch_digest(),
         "archive_sha256": hashlib.sha256(out_lib.read_bytes()).hexdigest(),
     }
     out_lib.with_suffix(".json").write_text(json.dumps(identity, indent=2) + "\n")
@@ -152,12 +164,12 @@ def main():
     if not (psbc_dir / "libpsbc/psbc_compile.c").is_file():
         sys.exit(f"PSBC source tree not found or incomplete at {psbc_dir}")
 
-    patch = ROOT / "tools/psbc-compute-buffer-spills.patch"
-    applied = subprocess.run(["git", "apply", "--reverse", "--check", str(patch)],
-                             cwd=psbc_dir, capture_output=True).returncode == 0
-    if not applied:
-        subprocess.run(["git", "apply", "--check", str(patch)], cwd=psbc_dir, check=True)
-        subprocess.run(["git", "apply", str(patch)], cwd=psbc_dir, check=True)
+    for patch in SOURCE_PATCHES:
+        applied = subprocess.run(["git", "apply", "--reverse", "--check", str(patch)],
+                                 cwd=psbc_dir, capture_output=True).returncode == 0
+        if not applied:
+            subprocess.run(["git", "apply", "--check", str(patch)], cwd=psbc_dir, check=True)
+            subprocess.run(["git", "apply", str(patch)], cwd=psbc_dir, check=True)
 
     if is_host:
         makefile = ROOT / "tools/Makefile.psbc-host"

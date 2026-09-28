@@ -12,7 +12,9 @@ extern "C" {
 #endif
 
 #define PS5VK_COMPILER_ID_PSBC_ACO  UINT32_C(0x50534243) /* "PSBC" */
-#define PS5VK_COMPILER_VERSION_1    UINT32_C(1)
+/* Bump with any change to generated code so persisted programs are rejected.
+ * 2: compute kernels keep weak FMAs fused (tools/psbc-compute-fused-fma.patch). */
+#define PS5VK_COMPILER_VERSION      UINT32_C(2)
 #define PS5VK_CACHE_ABI_VERSION_1   UINT32_C(1)
 #define PS5VK_MAX_SPECIALIZATION_CONSTANTS 64u
 #define PS5VK_MAX_SPECIALIZATION_BYTES 8u

@@ -16,6 +16,7 @@
  */
 #include "vk_pipeline_cache.h"
 #include "compilation_cache.h"
+#include "physical_device_profile.h"
 #include <string.h>
 
 #define INVALID VK_ERROR_UNKNOWN
@@ -29,7 +30,7 @@ enum { PS5VK_PIPELINE_CACHE_HEADER_BYTES = 32, PS5VK_PIPELINE_CACHE_HEADER_VERSI
 
 /* The exported blob carries only the header today. Any record format added
  * later must bump the format counter below and keep this parser total. */
-_Static_assert(PS5VK_COMPILER_VERSION_1 == 1, "uuid derivation input drifted");
+_Static_assert(PS5VK_COMPILER_VERSION == PS5VK_COMPILER_IDENTITY_VERSION, "uuid derivation input drifted");
 _Static_assert(PS5VK_CACHE_ABI_VERSION_1 == 1, "uuid derivation input drifted");
 
 static void store_u32le(uint8_t *out, uint32_t value)

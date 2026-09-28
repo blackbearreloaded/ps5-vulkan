@@ -24,8 +24,7 @@ class NativeInputs(unittest.TestCase):
             archive.write_bytes(b"test archive")
             identity = dict(schema=1, target="ps5", source_commit="revision",
                 archive_sha256=hashlib.sha256(archive.read_bytes()).hexdigest(),
-                source_patch_sha256=hashlib.sha256(
-                    (build_sdk.ROOT / "tools/psbc-compute-buffer-spills.patch").read_bytes()).hexdigest())
+                source_patch_sha256=build_sdk.source_patch_digest())
             stamp = archive.with_suffix(".json")
             stamp.write_text(json.dumps(identity))
             build_sdk.validate_compiler_archive(archive, "revision")

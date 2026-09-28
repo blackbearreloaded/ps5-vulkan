@@ -15,6 +15,7 @@ DIST_SDK = ROOT / "dist-sdk"
 sys.path.insert(0, str(ROOT / "tools"))
 from lab import lab_root  # noqa: E402
 from prepare_native_deps import GEARS  # noqa: E402
+from build_psbc import source_patch_digest  # noqa: E402
 
 
 def validate_compiler_archive(archive: Path, expected_revision: str) -> None:
@@ -25,8 +26,7 @@ def validate_compiler_archive(archive: Path, expected_revision: str) -> None:
     digest = hashlib.sha256(archive.read_bytes()).hexdigest()
     if (identity.get("schema") != 1 or identity.get("target") != "ps5" or
             identity.get("source_commit") != expected_revision or
-            identity.get("source_patch_sha256") != hashlib.sha256(
-                (ROOT / "tools/psbc-compute-buffer-spills.patch").read_bytes()).hexdigest() or
+            identity.get("source_patch_sha256") != source_patch_digest() or
             identity.get("archive_sha256") != digest):
         raise RuntimeError("native PSBC archive identity is stale or inconsistent")
 
