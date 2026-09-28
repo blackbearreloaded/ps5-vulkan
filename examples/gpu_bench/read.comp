@@ -1,0 +1,21 @@
+#version 450
+// Copyright (C) 2026 BlackBearReloaded
+// SPDX-License-Identifier: GPL-3.0-or-later
+//
+// Memory read bandwidth: every invocation sums a strided run of vec4 loads,
+// optionally wrapped (mask) inside a smaller region to measure cache reuse.
+layout(local_size_x = 64) in;
+layout(set = 0, binding = 0, std430) readonly buffer In { vec4 data[]; };
+layout(set = 0, binding = 1, std430) writeonly buffer Out { float values[]; };
+layout(push_constant) uniform Params { uint loads; uint stride; uint mask; } p;
+
+void main()
+{
+    vec4 sum = vec4(0.0);
+    uint index = gl_GlobalInvocationID.x;
+    for (uint n = 0u; n < p.loads; ++n) {
+        sum += data[index & p.mask];
+        index += p.stride;
+    }
+    values[gl_GlobalInvocationID.x] = sum.x + sum.y + sum.z + sum.w;
+}

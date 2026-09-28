@@ -1,0 +1,12 @@
+#version 450
+// Copyright (C) 2026 BlackBearReloaded
+// SPDX-License-Identifier: GPL-3.0-or-later
+//
+// Near-empty dispatch: measures the per-dispatch cost of a chained submission.
+layout(local_size_x = 64) in;
+layout(set = 0, binding = 0, std430) writeonly buffer Out { float values[]; };
+
+void main()
+{
+    if (gl_GlobalInvocationID.x == 0u) values[0] = 1.0;
+}

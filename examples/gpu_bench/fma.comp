@@ -1,0 +1,21 @@
+#version 450
+// Copyright (C) 2026 BlackBearReloaded
+// SPDX-License-Identifier: GPL-3.0-or-later
+//
+// Peak FP32 FMA throughput: 16 independent chains per invocation.
+layout(local_size_x = 64) in;
+layout(set = 0, binding = 0, std430) writeonly buffer Out { float values[]; };
+layout(push_constant) uniform Params { uint iterations; float scale; } p;
+
+void main()
+{
+    float a[16];
+    for (int i = 0; i < 16; ++i) a[i] = float(gl_GlobalInvocationID.x + uint(i)) * 1e-7;
+    const float m = p.scale, c = 1e-6;
+    for (uint n = 0u; n < p.iterations; ++n) {
+        for (int i = 0; i < 16; ++i) a[i] = fma(a[i], m, c);
+    }
+    float sum = 0.0;
+    for (int i = 0; i < 16; ++i) sum += a[i];
+    values[gl_GlobalInvocationID.x] = sum;
+}

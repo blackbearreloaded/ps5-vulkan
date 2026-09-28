@@ -230,6 +230,14 @@ Deploy and test only on the console configured locally, via FTP port 2121 under
 `/data/homebrew/PPSA88900/`. If unavailable, wait; no fallback console is
 authorized. The native consumer has not yet been run in this checkout.
 
+## GPU ceiling benchmark
+
+`python3 tools/build_gpu_bench.py` builds a PPSA88900 program from the staged
+SDK that reports peak FP32 FMA throughput (wave32 and wave64), straight-line code
+throughput against code size, memory and cached re-read bandwidth and the
+per-dispatch cost of a chained submission as `GPU_BENCH_*` lines in the kernel
+log and `gpu-bench-log.txt`.
+
 ## FSR4 applications
 
 The FSR4 runtime, its tests and native applications are built in
