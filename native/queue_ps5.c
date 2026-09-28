@@ -107,6 +107,24 @@ static VkResult ensure_arena(VkDevice device, struct ps5vk_device_arena *arena, 
     }
     return VK_SUCCESS;
 }
+/* GCR_CNTL of a mid-chain acquire: GLI, GLK, GLV and GL1 invalidate, GL2 kept. */
+enum { ACQUIRE_WITHOUT_GL2 = 0x0381 };
+
+/* Words of a prepared dispatch up to and including its CS partial flush
+ * (EVENT_WRITE CS_PARTIAL_FLUSH, index 4); 0 if the stream has none. */
+static size_t intermediate_words(const struct prepared_dispatch *p)
+{
+    for (size_t i = 8; i < p->words;) {
+        const uint32_t header = p->packet[i];
+        if ((header >> 30) != 3) return 0;
+        const size_t total = ((header >> 16) & 0x3fff) + 2;
+        if (((header >> 8) & 0xff) == 0x46 && total == 2 && p->packet[i + 1] == 0x00000407)
+            return i + total;
+        i += total;
+    }
+    return 0;
+}
+
 static void check_scratch_guards(VkDevice device)
 {
     const struct ps5vk_device_arena *arena = &device->compute_scratch;
@@ -285,33 +303,29 @@ static VkResult launch(VkDevice device, void *opaque)
     (void)device; struct native_job *job = opaque;
     volatile uint64_t *label = (void *)((unsigned char *)job->command + LABEL_OFFSET);
     uint32_t *readback = (void *)((unsigned char *)job->command + READBACK_OFFSET);
-    /* Chain as many dispatches as fit into one DCB. Each dispatch keeps its own
-     * cache acquire, CS partial flush and write-back RELEASE_MEM; before the next
-     * one the CP waits (WAIT_REG_MEM, as the graphics release path does) until
-     * that release wrote its token. This is the ordering the former one-DCB-per-
-     * dispatch loop obtained through a host round trip, without the round trip. */
+    /* Chain as many dispatches as fit into one DCB, ordered the way RADV orders
+     * a compute-to-compute dependency: each dispatch ends with its CS partial
+     * flush (the CP waits for its waves) and the next one's acquire invalidates
+     * the per-CU instruction, scalar, L0 and L1 caches. GL2 is coherent for all
+     * CUs, so only the chain's first dispatch also invalidates it (host writes)
+     * and only the last one keeps the template tail: readbacks and the GL2
+     * write-back RELEASE_MEM that publishes the completion token. */
     for (unsigned first = 0; first < job->count;) {
         memset(job->command, 0, COMMAND_BYTES);
         uint32_t *stream = job->command;
-        size_t words = 0;
+        size_t words = 0, chain_words = 0;
         unsigned last = first;
-        while (last < job->count) {
-            const struct prepared_dispatch *p = &job->dispatches[last];
-            const size_t need = p->words + (last > first ? WAIT_WORDS : 0);
-            if ((words + need) * 4 > STREAM_BYTES) break;
-            if (last > first) {
-                const uint64_t address = (uintptr_t)label;
-                const uint32_t wait[WAIT_WORDS] = {UINT32_C(0xc0053c00), UINT32_C(0x13),
-                    (uint32_t)address, (uint32_t)(address >> 32), last /* previous index + 1 */,
-                    UINT32_C(0xffffffff), 4};
-                memcpy(stream + words, wait, sizeof(wait));
-                words += WAIT_WORDS;
-            }
-            memcpy(stream + words, p->packet, p->words * 4);
-            words += p->words;
-            ++last;
-        }
+        while (last < job->count && (chain_words + job->dispatches[last].words) * 4 <= STREAM_BYTES)
+            chain_words += job->dispatches[last++].words;
         if (last == first) return VK_ERROR_UNKNOWN;
+        for (unsigned i = first; i < last; ++i) {
+            const struct prepared_dispatch *p = &job->dispatches[i];
+            const size_t count = i + 1 < last ? intermediate_words(p) : p->words;
+            if (!count) return VK_ERROR_UNKNOWN;
+            memcpy(stream + words, p->packet, count * 4);
+            if (i > first) stream[words + 7] = ACQUIRE_WITHOUT_GL2;
+            words += count;
+        }
         readback[3] = 0xdeadbeef;
         cache(job->command, COMMAND_BYTES);
         struct ps5_agc_submit submit = {job->command, (uint32_t)words, 0, {0, 0, 0}};
