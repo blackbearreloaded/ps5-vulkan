@@ -1863,7 +1863,8 @@ VKAPI_ATTR VkResult VKAPI_CALL vkCreateDevice(VkPhysicalDevice p, const VkDevice
     d->max_allocation = p->platform.max_allocation;
     d->submit_backend = p->platform.queue_backend;
     d->progress = p->platform.progress;
-    d->pipeline_cache = ps5vk_compilation_cache_create(64, 4 * 1024 * 1024);
+    /* Room for a complete FSR4 graph (28 programs, their SPIR-V and ISA) and more. */
+    d->pipeline_cache = ps5vk_compilation_cache_create(256, 64 * 1024 * 1024);
     if (p->platform.configure) {
         p->platform.configure(d);
     }
