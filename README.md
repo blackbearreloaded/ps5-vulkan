@@ -18,6 +18,8 @@
   <a href="https://github.com/mpereiraesaa/ps5-vulkan/issues">Report an issue</a>
 </p>
 
+> **Fork note.** This fork is maintained by BlackBearReloaded for the [PS5 FSR4 port](https://github.com/blackbearreloaded/ps5-fsr4), which uses it as a submodule. It adds compute subgroup size control (wave32/wave64), chained compute submission with resident code and shared scratch, compute shader code prefetch (GL2 and instruction prefetch), fused compute FMAs in the PSBC compiler, larger command buffers and the extended compute profile. See [LICENSING.md](LICENSING.md).
+
 An experimental, hardware-accelerated Vulkan 1.3 implementation
 for native PlayStation 5 homebrew, targeting the console's **gfx1013 GPU**.
 It provides a static SDK, runtime SPIR-V compilation and native 1080p

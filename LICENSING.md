@@ -1,44 +1,21 @@
 # Licensing and source provenance
 
-## FSR4 and BC250 credits
+## This fork
 
-**The BC250 FSR4 project is the primary technical reference behind this PS5
-FSR4 effort. Credit for that pioneering porting and optimization work belongs
-to its original authors and contributors:**
+Modified by BlackBearReloaded, 2026-09-26 to 2026-09-28. This fork of
+[mpereiraesaa/ps5-vulkan](https://github.com/mpereiraesaa/ps5-vulkan) is maintained by BlackBearReloaded for the
+[PS5 FSR4 port](https://github.com/blackbearreloaded/ps5-fsr4), which uses it
+as a submodule. It adds compute subgroup size control (wave32/wave64), chained
+compute submission with resident code and shared scratch, compute shader code
+prefetch (GL2 and instruction prefetch), fused compute FMAs in the PSBC
+compiler, larger command buffers and the extended compute profile.
 
-- **[dmoraza / dmorazasanchez](https://github.com/dmorazasanchez/bc250-fsr4)**:
-  originated the BC250 FSR4 project and its initial performance improvements,
-  as acknowledged by the fork used here.
-- **[daniel-h-0 and contributors](https://github.com/daniel-h-0/bc250-fsr4-fork)**:
-  continued the BC250 work. This is the fork used directly as our reference
-  for FSR4 INT8 shader optimizations, provider tooling and reference workloads.
-  The audited revision is
-  [528f13b17e48bfba5b153f17ec4ebdfb3afa5bcb](https://github.com/daniel-h-0/bc250-fsr4-fork/commit/528f13b17e48bfba5b153f17ec4ebdfb3afa5bcb);
-  see the pinned dependency identities in the build tools.
-- **AMD / GPUOpen**: original FSR4 technology, shaders and model assets.
-
-BlackBearReloaded's work in this repository is the native PS5 adaptation,
-integration and validation. It does not claim authorship of FSR4 or the BC250
-optimizations. Upstream code, shaders, models and tools retain their respective
-copyright and license notices; this repository's GPL grant does not relicense
-those assets. Preserve their notices when adapting or distributing them.
-
-## PS5 FSR4 working copy
-
-Modified by BlackBearReloaded, 2026-09-26. This repository imports
-[mpereiraesaa/ps5-vulkan](https://github.com/mpereiraesaa/ps5-vulkan) at
-`10a76510a6b1e48061b5057f352cbbd6d78549fb`, preserving its complete history,
-copyright notices and GPL terms. It is an independent working copy; upstream
-has not endorsed or validated FSR4 support.
-
-The import adapts the README, build-status documentation and workflow triggers,
-and adds FSR planning documents. These additions are Copyright (C) 2026
-BlackBearReloaded and licensed under `GPL-3.0-or-later`. The original driver,
-tests and build-tool implementation remain unchanged at this import.
+These modifications are Copyright (C) 2026 BlackBearReloaded and licensed
+under `GPL-3.0-or-later`. Upstream has not endorsed or validated them.
 
 ## Upstream licensing and source provenance
 
-Unless a file states otherwise, the original work in the imported Vulkan baseline is:
+Unless a file states otherwise, the original work in this repository is:
 
 Copyright (C) 2026 Manuel Pereira
 
@@ -74,15 +51,6 @@ Current derived or adapted files are:
 | `src/texture_descriptor.c` | `src/gallium/ps5/ps5_screen.c`, texture resource descriptor construction | GFX10.3 1D, 1D-array, 2D, 2D-array, cube and 3D resource-type and dimension-field adaptation; ps5-vulkan supplies the Vulkan image/view validation and hardware readback gates |
 | `src/texture_layout.c` | `src/gallium/ps5/ps5_screen.c`, linear sampled-resource allocation | Descending, 256-byte-aligned GFX1013 mip-level packing and complete-chain-per-layer layout; ps5-vulkan supplies Vulkan mip bounds, transfer planning and memory-overflow gates |
 | `native/runtime_graphics_compiler.c`, `native/runtime_shader.c`, `native/runtime_draw_abi.h`, `native/draw_emit_ps5.c`, `src/graphics_formats.h` | `src/gallium/ps5/ps5_screen.c`, bounded PSBC texture-descriptor ABI, `ps5_integer_vertex_format` and `ps5_packed_vertex_format` | Vulkan-to-PSBC GFX1013 vertex formats plus the exact fragment set-0 combined-sampler metadata/user-SGPR bridge; unsupported descriptor profiles fail closed and explicit mip LOD has public-SDK-linked hardware readback |
-
-## PS5 FSR1 research reference
-
-[sainsaji/ps5-upscalar-research](https://github.com/sainsaji/ps5-upscalar-research)
-at commit `0321573fc9f88c681be30ecfe6892e2344cec86e` informed the hardware
-and capture checks in [docs/FSR1_REFERENCE.md](docs/FSR1_REFERENCE.md).
-No code, shader or image from that repository is copied here. Its example/tool
-code is GPL-3.0-or-later, and its FSR1 shader port carries AMD's MIT notice;
-preserve both where a future direct adaptation applies.
 
 ## Public AGC and logger support
 
