@@ -5,6 +5,18 @@
 static int overlap(uint64_t a, uint64_t an, uint64_t b, uint64_t bn)
 { return a < b + bn && b < a + an; }
 
+void ps5vk_place_code(void *destination, const uint32_t *code, size_t code_words)
+{
+    enum { PREFIX = PS5VK_CODE_PREFIX_BYTES / 4, TAIL = PS5VK_CODE_TAIL_BYTES / 4 };
+    const uint32_t code_end = UINT32_C(0xbf9f0000);
+    uint32_t *words = destination;
+    for (size_t i = 2; i < PREFIX; ++i) words[i] = code_end;
+    words[0] = UINT32_C(0xbfa00003);                 /* s_inst_prefetch 0x3 */
+    words[1] = UINT32_C(0xbf820000) | (PREFIX - 2);  /* s_branch to the program */
+    memcpy(words + PREFIX, code, code_words * 4);
+    for (size_t i = 0; i < TAIL; ++i) words[PREFIX + code_words + i] = code_end;
+}
+
 size_t ps5vk_dispatch_encode(uint32_t *words, size_t capacity,
                             const struct ps5vk_dispatch_encoding *d)
 {
@@ -91,7 +103,7 @@ size_t ps5vk_dispatch_encode(uint32_t *words, size_t capacity,
         }
         if (p->user_sgprs != next_sgpr) return 0;
     }
-    uint64_t code_bytes = p->code_words * 4;
+    uint64_t code_bytes = ps5vk_placed_code_bytes(p->code_words);
     if (a->code > (UINT64_C(1) << 48) - code_bytes ||
         a->completion > (UINT64_C(1) << 48) - 8 || a->readback > (UINT64_C(1) << 48) - 16 ||
         (a->code >> 32) != ((a->code + code_bytes - 1) >> 32)) return 0;
@@ -194,9 +206,8 @@ size_t ps5vk_dispatch_encode(uint32_t *words, size_t capacity,
             out += 5; found |= 4;
             /* RADV's radv_after_dispatch L2 prefetch of the program once the
              * dispatch has started: a CP DMA_DATA read (SRC_SEL SRC_ADDR_USING_L2,
-             * DST_SEL NOWHERE, no write confirm) of the 32-byte aligned code
-             * range, so the waves' sequential instruction misses hit GL2
-             * instead of each waiting for memory. */
+             * DST_SEL NOWHERE, no write confirm) of the 32-byte aligned placed
+             * code, so the waves' instruction misses hit GL2 instead of memory. */
             const uint64_t first = a->code & ~UINT64_C(31);
             const uint64_t bytes = ((a->code + code_bytes + 31) & ~UINT64_C(31)) - first;
             if (out + 7 > capacity) return 0;

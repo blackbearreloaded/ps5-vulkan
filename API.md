@@ -432,6 +432,13 @@ smaller incompatible layer pitches. The graphics profile reports
   storage buffers, but this does not expose general narrow arithmetic.
 - Compute pipelines compiled from SPIR-V at runtime through PSBC/ACO for
   GFX1013, with a bounded in-memory compilation cache.
+- Each compute program is placed after a 64-byte prefix that sets instruction
+  prefetch mode 3 (`s_inst_prefetch 0x3`) and branches to it, and is followed
+  by 256 bytes of `s_code_end`. PS5 waves otherwise start without the forward
+  instruction prefetch that Linux enables on GFX10
+  (`SH_MEM_CONFIG.INITIAL_INST_PREFETCH`). After each dispatch starts, the
+  queue also reads the program into GL2 with a CP DMA prefetch, as RADV does.
+  Together these took FSR4 at 1280×720→1920×1080 from 7.07 ms to 3.81 ms.
 - Up to four descriptor sets in the compute ABI. The native acceptance fixture
   uses three sets simultaneously.
 - Storage buffers, uniform buffers and uniform texel buffers. A direct native

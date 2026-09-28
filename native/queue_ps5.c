@@ -177,11 +177,11 @@ static VkResult prepare(VkDevice device, const struct ps5vk_submission *submissi
                 result = VK_ERROR_UNKNOWN; goto fail;
             }
             if (!pipeline->native_code) {
-                size_t code_bytes = program->code_words * 4;
+                size_t code_bytes = ps5vk_placed_code_bytes(program->code_words);
                 result = device->memory.allocate(device->memory.context, code_bytes,
                                                  &pipeline->native_code, &pipeline->native_code_backing);
                 if (result != VK_SUCCESS) goto fail;
-                memcpy(pipeline->native_code, program->code, code_bytes);
+                ps5vk_place_code(pipeline->native_code, program->code, program->code_words);
                 cache(pipeline->native_code, code_bytes);
             }
             tables_needed += dispatch_table_region(program);
