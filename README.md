@@ -99,3 +99,5 @@ for terms, contribution guidance and third-party provenance. Applications
 distributed with the static `libps5vk.a` must provide the corresponding source
 under GPL-compatible terms. Console system modules and their import facades
 are not distributed here.
+
+This project was developed with AI assistance from OpenAI and/or Anthropic tools.
