@@ -1907,6 +1907,8 @@ VKAPI_ATTR void VKAPI_CALL vkDestroyDevice(VkDevice d, const VkAllocationCallbac
         ps5vk_compilation_cache_destroy(d->pipeline_cache);
         d->pipeline_cache = NULL;
     }
+    if (d->compute_scratch.backing) d->memory.release(d->memory.context, d->compute_scratch.backing);
+    if (d->compute_tables.backing) d->memory.release(d->memory.context, d->compute_tables.backing);
     d->physical->platform.close(&d->memory);
     pthread_mutex_destroy(&d->queue_lock);
     --d->physical->instance->devices;

@@ -122,6 +122,9 @@ struct VkPipeline_T {
     uint32_t push_constant_size;
     VkShaderStageFlags push_constant_stages[PS5VK_MAX_PUSH_CONSTANT_DWORDS];
     struct ps5vk_compiled_program program;
+    /* GPU-resident copy of program.code, uploaded by the native compute queue
+     * on first execution and released with the pipeline. */
+    void *native_code, *native_code_backing;
     void *cache_entry;
     VkBool32 graphics;
     VkBool32 dispatch_base_enabled;

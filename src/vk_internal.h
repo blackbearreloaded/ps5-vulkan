@@ -430,6 +430,9 @@ struct VkDevice_T {
     VkPhysicalDevice physical;
     struct VkQueue_T queue;
     struct ps5vk_memory_backend memory;
+    /* Native compute arenas reused by successive synchronous jobs: shader
+     * scratch (never zeroed per dispatch) and descriptor tables. */
+    struct ps5vk_device_arena { void *address, *backing; size_t bytes; } compute_scratch, compute_tables;
     VkAllocationCallbacks allocator;
     VkBool32 custom_allocator;
     /* Enabled only for a device with a native presentation backend. */
