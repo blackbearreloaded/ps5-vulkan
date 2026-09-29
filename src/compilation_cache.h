@@ -154,6 +154,19 @@ void ps5vk_cache_entry_release(
     struct ps5vk_cache_entry *entry
 );
 
+/* Serialize compiled compute entries as pointer-free records for
+ * vkGetPipelineCacheData. Returns the bytes all records need; writes whole
+ * records while they fit in capacity (out may be NULL) and stores the bytes
+ * written in *written. */
+size_t ps5vk_compilation_cache_export(struct ps5vk_compilation_cache *cache,
+                                      void *out, size_t capacity, size_t *written);
+
+/* Import records produced by ps5vk_compilation_cache_export. The data is
+ * untrusted: malformed records end the import and nothing from the blob is
+ * adopted as a pointer. Returns the number of entries added. */
+unsigned ps5vk_compilation_cache_import(struct ps5vk_compilation_cache *cache,
+                                        const void *data, size_t bytes);
+
 /* Query current statistics. */
 void ps5vk_compilation_cache_get_stats(
     struct ps5vk_compilation_cache *cache,
