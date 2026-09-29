@@ -19,6 +19,8 @@ struct ps5vk_compiled_program {
     /* Pinned PSBC compute ABI: optional inline grid dimensions at s3..s5.
      * LDS_SIZE is in the compiler's 512-byte allocation units. */
     uint32_t grid_size_sgpr, lds_size;
+    /* GFX10 wave32 scratch, compiler bytes before odd-1KiB stride padding. */
+    uint32_t scratch_bytes_per_wave;
     uint32_t push_constant_size, push_constant_sgpr;
     uint32_t descriptor_set_mask;
     uint32_t descriptor_set_sgpr[PS5VK_MAX_SETS];

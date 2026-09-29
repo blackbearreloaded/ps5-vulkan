@@ -5,11 +5,50 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 from lab import lab_root
 
 ROOT = Path(__file__).resolve().parents[1]
+# Applied in order to the pinned PSBC tree; the archive identity records them.
+SOURCE_PATCHES = (
+    ROOT / "tools/psbc-compute-buffer-spills.patch",
+)
+SERIES_STAMP = ".ps5vk-patch-series.json"
+
+
+def source_patch_digest() -> str:
+    digest = hashlib.sha256()
+    for patch in SOURCE_PATCHES:
+        digest.update(patch.name.encode() + b"\0" + hashlib.sha256(patch.read_bytes()).digest())
+    return digest.hexdigest()
+
+
+def apply_source_patches(psbc_dir: Path) -> None:
+    """Bring the pinned tree to exactly its revision plus SOURCE_PATCHES, in order.
+
+    A stamp in the tree records the applied series and the files it touched.
+    When the series changes, those files return to the pinned revision and the
+    whole series is applied again, so later patches may build on earlier ones.
+    """
+    stamp = psbc_dir / SERIES_STAMP
+    digest = source_patch_digest()
+    previous = json.loads(stamp.read_text()) if stamp.is_file() else {}
+    if previous.get("digest") == digest:
+        return
+    files = set(previous.get("files", []))
+    for patch in SOURCE_PATCHES:
+        files |= set(re.findall(r"^\+\+\+ b/(\S+)", patch.read_text(), re.M))
+    tracked = subprocess.run(["git", "ls-files", "--", *sorted(files)], cwd=psbc_dir,
+                             check=True, capture_output=True, text=True).stdout.split()
+    if tracked:
+        subprocess.run(["git", "checkout", "HEAD", "--", *tracked], cwd=psbc_dir, check=True)
+    for name in files - set(tracked):
+        (psbc_dir / name).unlink(missing_ok=True)
+    for patch in SOURCE_PATCHES:
+        subprocess.run(["git", "apply", str(patch)], cwd=psbc_dir, check=True)
+    stamp.write_text(json.dumps({"digest": digest, "files": sorted(files)}, indent=2) + "\n")
 
 
 def write_identity(out_lib: Path, psbc_dir: Path, target: str) -> None:
@@ -19,6 +58,7 @@ def write_identity(out_lib: Path, psbc_dir: Path, target: str) -> None:
         "schema": 1,
         "target": target,
         "source_commit": revision,
+        "source_patch_sha256": source_patch_digest(),
         "archive_sha256": hashlib.sha256(out_lib.read_bytes()).hexdigest(),
     }
     out_lib.with_suffix(".json").write_text(json.dumps(identity, indent=2) + "\n")
@@ -150,6 +190,8 @@ def main():
         "PS5VK_PSBC_SOURCE", ROOT / "third_party/psbc-reference")).resolve()
     if not (psbc_dir / "libpsbc/psbc_compile.c").is_file():
         sys.exit(f"PSBC source tree not found or incomplete at {psbc_dir}")
+
+    apply_source_patches(psbc_dir)
 
     if is_host:
         makefile = ROOT / "tools/Makefile.psbc-host"
