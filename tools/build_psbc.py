@@ -36,6 +36,12 @@ def get_sdk():
 
 
 def ensure_generated(psbc_dir):
+    # Check Python generators before Make can leave empty redirected headers.
+    try:
+        import mako.template  # noqa: F401
+        import yaml  # noqa: F401
+    except ImportError as error:
+        raise SystemExit(f"PSBC generation requires Mako and PyYAML: {error}") from error
     # Ensure generated files exist from Mesa/ACO/NIR
     subprocess.run([
         "make", "-C", str(psbc_dir),
