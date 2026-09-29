@@ -410,7 +410,7 @@ VkExtent3D ps5vk_storage_image_max_extent(VkFormat format)
     if (!ps5vk_texture_format_witnessed(format, PS5VK_FORMAT_CAP_STORAGE_IMAGE))
         return (VkExtent3D){0,0,0};
 #if PS5VK_EXTENDED_COMPUTE_DIAGNOSTIC
-    return (VkExtent3D){1920,1080,1};
+    return (VkExtent3D){3840,2160,1};
 #else
     return (VkExtent3D){8,8,1};
 #endif

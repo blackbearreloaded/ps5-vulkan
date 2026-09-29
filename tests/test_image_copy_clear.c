@@ -770,7 +770,7 @@ static void bda_storage_image_trace(void)
     assert(ps5vk_graphics_image_properties(VK_FORMAT_R32_UINT,VK_IMAGE_TYPE_2D,
         VK_IMAGE_TILING_OPTIMAL,usage,0,1u<<20,&properties)==VK_SUCCESS);
 #if PS5VK_EXTENDED_COMPUTE_DIAGNOSTIC
-    assert(properties.maxExtent.width==1920 && properties.maxExtent.height==1080);
+    assert(properties.maxExtent.width==3840 && properties.maxExtent.height==2160);
 #else
     assert(properties.maxExtent.width==8 && properties.maxExtent.height==8);
 #endif
