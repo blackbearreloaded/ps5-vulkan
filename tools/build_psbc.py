@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 # Applied in order to the pinned PSBC tree; the archive identity records them.
 SOURCE_PATCHES = (
     ROOT / "tools/psbc-compute-buffer-spills.patch",
+    ROOT / "tools/psbc-compute-wave-size.patch",
 )
 SERIES_STAMP = ".ps5vk-patch-series.json"
 

@@ -102,7 +102,7 @@ LIBPSBC_OBJS := \
 
 libpsbc/psbc_compile.host.o: libpsbc/psbc_compile.h
 
-$(LIBPSBC_OBJS): $(PS5VK_ROOT)/tools/psbc-compute-buffer-spills.patch
+$(LIBPSBC_OBJS): $(PS5VK_ROOT)/tools/psbc-compute-buffer-spills.patch $(PS5VK_ROOT)/tools/psbc-compute-wave-size.patch
 
 libpsbc: $(LIBPSBC)
 

@@ -255,6 +255,12 @@ enum ps5vk_t09_feature_bits {
      * subgroup built-ins) for a private measurement build. Not a subgroup
      * properties promise: VkPhysicalDeviceSubgroupProperties stays zero. */
     PS5VK_T09_FEATURE_SUBGROUP_BASIC_COMPUTE = 1u << 28,
+    /* Vulkan 1.3 subgroupSizeControl for compute: a pipeline may require
+     * subgroup size 32 (the default wave32 dispatch) or 64 (wave64), and
+     * requiredSubgroupSizeStages is the compute stage. Varying subgroup sizes
+     * and computeFullSubgroups are not implemented. Only diagnostic builds
+     * (PS5VK_SUBGROUP_SIZE_CONTROL_DIAGNOSTIC) set it. */
+    PS5VK_T09_FEATURE_SUBGROUP_SIZE_CONTROL = 1u << 22,
     /* A second, HOST_COHERENT memory type whose coherence the driver keeps at
      * map/unmap and submission boundaries (src/physical_device_profile.h).
      * Only the diagnostic witness build sets it until native proof. */
@@ -338,8 +344,9 @@ struct ps5vk_compiler {
     void *context;
     VkResult (*resolve)(void *, const uint32_t *, size_t, const char *,
                         const struct ps5vk_compiled_program **);
+    /* ..., feature mask, compute wave size (32 or 64), program, code. */
     VkResult (*compile)(void *, const uint32_t *, size_t, const char *,
-                        VkPipelineLayout, const VkSpecializationInfo *, uint32_t,
+                        VkPipelineLayout, const VkSpecializationInfo *, uint32_t, uint32_t,
                         struct ps5vk_compiled_program *, uint32_t **);
 };
 struct ps5vk_progress {

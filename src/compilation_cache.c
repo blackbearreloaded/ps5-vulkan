@@ -100,7 +100,7 @@ bool ps5vk_cache_build_stage_key(const uint32_t *spirv, size_t spirv_words,
     out_key->target_gfx = 1013;
     out_key->stage = stages;
     out_key->compiler_id = PS5VK_COMPILER_ID_PSBC_ACO;
-    out_key->compiler_version = PS5VK_COMPILER_VERSION_1;
+    out_key->compiler_version = PS5VK_COMPILER_VERSION;
     out_key->abi_version = PS5VK_CACHE_ABI_VERSION_1;
     out_key->flags = flags;
     strncpy(out_key->entry_name, entry_name, sizeof(out_key->entry_name) - 1);

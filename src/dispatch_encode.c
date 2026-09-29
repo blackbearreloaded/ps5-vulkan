@@ -12,7 +12,8 @@ size_t ps5vk_dispatch_encode(uint32_t *words, size_t capacity,
         !d->completion_value) return 0;
     const struct ps5vk_compiled_program *p = d->program;
     const struct ps5vk_compute_addresses *a = &d->addresses;
-    if (p->gfx != 1013 || p->wave_size != 32 || !p->code_words || p->code_words > 1024 * 1024 ||
+    if (p->gfx != 1013 || (p->wave_size != 32 && p->wave_size != 64) ||
+        !p->code_words || p->code_words > 1024 * 1024 ||
         !p->vgprs || p->vgprs > 256 || !p->sgprs || p->sgprs > 106 ||
         p->user_sgprs < 2 || p->user_sgprs > 10 || p->lds_size > 128 ||
         p->float_mode > 255 || p->ieee_mode > 1 || p->mem_ordered > 1 || p->tg_size > 1 ||
@@ -119,7 +120,7 @@ size_t ps5vk_dispatch_encode(uint32_t *words, size_t capacity,
     if (!n) return 0;
     /* gfx10.json COMPUTE_PGM_RSRC1/2 and RADV's wave32 allocation granule.
      * SGPRS field is unused for this GFX10 ABI. */
-    uint32_t rsrc1 = ((p->vgprs - 1) / 8) | (p->float_mode << 12) |
+    uint32_t rsrc1 = ((p->vgprs - 1) / (p->wave_size == 64 ? 4 : 8)) | (p->float_mode << 12) |
         (p->ieee_mode << 23) | (p->wgp_mode << 29) | (p->mem_ordered << 30);
     uint32_t rsrc2 = (!!scratch_bytes) | (p->user_sgprs << 1) | (p->tgid[0] << 7) | (p->tgid[1] << 8) |
         (p->tgid[2] << 9) | (p->tg_size << 10) | (p->tidig_components << 11) |
@@ -188,7 +189,8 @@ size_t ps5vk_dispatch_encode(uint32_t *words, size_t capacity,
             if (total != 5 || (found & 4) || out + 5 > capacity) return 0;
             words[out] = packet[i];
             memcpy(words + out + 1, d->groups, 12);
-            words[out + 4] = packet[i + 4];
+            /* DISPATCH_INITIATOR CS_W32_EN (bit 15) selects wave32. */
+            words[out + 4] = p->wave_size == 64 ? packet[i + 4] & ~UINT32_C(0x8000) : packet[i + 4];
             out += 5; found |= 4;
         } else if (opcode == 0x49) {
             if (total != 8 || (found & 8) || packet[i + 1] != 0x0070f528 || out + 8 > capacity) return 0;
