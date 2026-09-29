@@ -112,5 +112,20 @@ int main(void)
     n=ps5vk_dispatch_encode(words,128,&d);assert(n);
     ring=find_sh(words,n,0xb860);resource=find_sh(words,n,0xb848);
     assert(words[ring+2]==0 && !(words[resource+3]&1u));
+    /* The dispatch is followed by a CP DMA prefetch of its code into GL2. */
+    size_t prefetch=n;
+    for(size_t i=0;i<n;i+=((words[i]>>16)&0x3fff)+2)
+        if(((words[i]>>8)&0xff)==0x15){prefetch=i+5;break;}
+    assert(prefetch<n && words[prefetch]==0xc0055000u && words[prefetch+1]==0x60200000u);
+    assert(words[prefetch+2]==0x00004000u && words[prefetch+3]==2 && words[prefetch+4]==0x00004000u);
+    assert(words[prefetch+5]==2 && words[prefetch+6]==(0x80000000u|640u));
+    /* Placement: prefetch mode 3, a branch to the program, s_code_end padding. */
+    uint32_t program[80],placed[160];
+    for(unsigned i=0;i<80;++i)program[i]=0x7e000200u+i;
+    assert(ps5vk_placed_code_bytes(80)==sizeof(placed));
+    ps5vk_place_code(placed,program,80);
+    assert(placed[0]==0xbfa00003u && placed[1]==0xbf82000eu && placed[15]==0xbf9f0000u);
+    assert(!memcmp(placed+16,program,sizeof(program)));
+    assert(placed[96]==0xbf9f0000u && placed[159]==0xbf9f0000u);
     puts("Multi-set and scratch dispatch encoding: pass (host packets only)");
 }
