@@ -1175,6 +1175,63 @@ static void image_barriers(void)
     vkCmdPipelineBarrier(c,VK_PIPELINE_STAGE_HOST_BIT,VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
         0,1,&host_vertex,0,NULL,1,&b);
     assert(c->state==PS5VK_INVALID && !c->operation_count);
+    /* Native DXVK 2.6.2 DXGI readback/present: the backbuffer is also a
+     * sampled image. Its render-to-sample dependency carries the later copy
+     * and colour scopes in the destination access mask. */
+    image.info.imageType=VK_IMAGE_TYPE_2D;
+    image.info.extent=(VkExtent3D){64,64,1};
+    image.info.samples=VK_SAMPLE_COUNT_1_BIT;
+    image.info.tiling=VK_IMAGE_TILING_OPTIMAL;
+    image.info.usage=VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
+        VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
+        VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    b.oldLayout=VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    b.newLayout=VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    b.subresourceRange.levelCount=1;
+    b.srcAccessMask=VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    const VkAccessFlags dxvk_future_access=VK_ACCESS_SHADER_READ_BIT |
+        VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT |
+        VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT;
+    const VkPipelineStageFlags dxvk_future_stages=VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT |
+        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT;
+    b.dstAccessMask=dxvk_future_access;
+    assert(vkBeginCommandBuffer(c,&begin_info)==VK_SUCCESS);
+    vkCmdPipelineBarrier(c,VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+        dxvk_future_stages,
+        0,0,NULL,0,NULL,1,&b);
+    assert(c->state==PS5VK_RECORDING && c->operation_count==1);
+    b.oldLayout=VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    b.newLayout=VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+    b.srcAccessMask=0;
+    b.dstAccessMask=VK_ACCESS_TRANSFER_READ_BIT;
+    vkCmdPipelineBarrier(c,VK_PIPELINE_STAGE_TRANSFER_BIT,
+        VK_PIPELINE_STAGE_TRANSFER_BIT,0,0,NULL,0,NULL,1,&b);
+    assert(c->state==PS5VK_RECORDING && c->operation_count==2);
+    b.oldLayout=VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    b.newLayout=VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    b.srcAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT;
+    b.dstAccessMask=dxvk_future_access;
+    vkCmdPipelineBarrier(c,VK_PIPELINE_STAGE_TRANSFER_BIT,dxvk_future_stages,
+        0,0,NULL,0,NULL,1,&b);
+    assert(c->state==PS5VK_RECORDING && c->operation_count==3);
+    b.oldLayout=VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+    b.srcAccessMask=0;
+    const VkPipelineStageFlags dxvk_host_stages=dxvk_future_stages |
+        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_HOST_BIT;
+    vkCmdPipelineBarrier(c,VK_PIPELINE_STAGE_TRANSFER_BIT,dxvk_host_stages,
+        0,0,NULL,0,NULL,1,&b);
+    assert(c->state==PS5VK_RECORDING && c->operation_count==4);
+    assert(vkEndCommandBuffer(c)==VK_SUCCESS);
+    b.oldLayout=VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    b.newLayout=VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    b.srcAccessMask=VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    b.dstAccessMask=dxvk_future_access;
+    image.info.usage &= ~VK_IMAGE_USAGE_SAMPLED_BIT;
+    assert(vkBeginCommandBuffer(c,&begin_info)==VK_SUCCESS);
+    vkCmdPipelineBarrier(c,VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+        dxvk_future_stages,
+        0,0,NULL,0,NULL,1,&b);
+    assert(c->state==PS5VK_INVALID);
     vkDestroyCommandPool(&d,p,NULL);
     d.images=NULL;vkFreeMemory(&d,memory,NULL);
 }
