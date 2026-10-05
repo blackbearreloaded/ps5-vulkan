@@ -277,6 +277,8 @@ check:
 	./build/tests/test_texture_dma
 	$(CC) -std=c11 -Wall -Wextra -Werror -Isrc src/color_clear.c tests/test_color_clear.c -o build/tests/test_color_clear
 	./build/tests/test_color_clear
+	$(CC) -std=c11 -Wall -Wextra -Werror -Isrc -I$(LAB_SIBLINGS)/ps5-agc-gears/include -I$(LAB_SIBLINGS)/ps5-agc-gears/src $(LAB_SIBLINGS)/ps5-agc-gears/src/ps5_color_target.c tests/test_color_runtime_defaults.c -o build/tests/test_color_runtime_defaults
+	./build/tests/test_color_runtime_defaults
 	$(CC) -std=c11 -Wall -Wextra -Werror -Isrc src/color_detile.c tests/test_color_detile.c -o build/tests/test_color_detile
 	./build/tests/test_color_detile
 	$(CC) -std=c11 -Wall -Wextra -Werror -Isrc src/scene_geometry.c tests/test_scene_geometry.c -o build/tests/test_scene_geometry

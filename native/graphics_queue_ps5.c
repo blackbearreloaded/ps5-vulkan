@@ -19,6 +19,7 @@
 #include "depth_layout.h"
 #include "color_rect_clear.h"
 #include "color_clear.h"
+#include "color_runtime_defaults.h"
 #include "color_detile.h"
 #include "attachment_ops.h"
 #include "ps5_platform.h"
@@ -1025,7 +1026,8 @@ static VkResult prepare_shape(VkDevice d,const struct ps5vk_submission *s,void *
         if(rc!=VK_SUCCESS){draw_site=__LINE__;goto fail;}
     }
     ps5_agc_register defaults[PS5_COLOR_REGISTER_COUNT];
-    if(ps5_color_select_runtime_defaults(defaults,sceAgcGetRegisterDefaults())) {rc=VK_ERROR_INITIALIZATION_FAILED;draw_site=__LINE__;goto fail;}
+    /* Found by key and checked by content: the table's size differs between system software versions. */
+    if(ps5vk_color_runtime_defaults(defaults,sceAgcGetRegisterDefaults())) {rc=VK_ERROR_INITIALIZATION_FAILED;draw_site=__LINE__;goto fail;}
     /* Clear only the layers named by each attachment view. Filling the image's
      * whole allocation would erase the other faces of an array attachment. */
     for(uint32_t k=0;k<color_count;++k) {
