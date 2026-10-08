@@ -1579,7 +1579,16 @@ static int image_barrier_profile(const VkImageMemoryBarrier *b,
         (b->oldLayout==VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL &&
          b->newLayout==VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL &&
          b->srcAccessMask==VK_ACCESS_TRANSFER_WRITE_BIT &&
-         b->dstAccessMask==VK_ACCESS_SHADER_READ_BIT);
+         b->dstAccessMask==VK_ACCESS_SHADER_READ_BIT)
+#if PS5VK_EXTENDED_COMPUTE_DIAGNOSTIC
+        /* The private temporal-compute profile refreshes the same sampled
+         * inputs every frame after their previous shader read completes. */
+        || (b->oldLayout==VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL &&
+            b->newLayout==VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL &&
+            b->srcAccessMask==VK_ACCESS_SHADER_READ_BIT &&
+            b->dstAccessMask==VK_ACCESS_TRANSFER_WRITE_BIT)
+#endif
+        ;
     /* Depth clear target: the transition that lets an explicit
      * vkCmdClearDepthStencilImage control a later depth-tested draw. Bounded to
      * exactly the write the clear performed and the access the fragment tests

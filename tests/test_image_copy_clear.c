@@ -1276,6 +1276,23 @@ static void extended_storage_round_trip(void)
         VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
         32, 24, &depth_map);
     assert(depth_map);
+    VkCommandBuffer reuse = begin();
+    VkImageMemoryBarrier b = transfer_barrier(depth, VK_IMAGE_LAYOUT_UNDEFINED,
+        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 0, VK_ACCESS_TRANSFER_WRITE_BIT);
+    vkCmdPipelineBarrier(reuse, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+        VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 0, NULL, 1, &b);
+    b = transfer_barrier(depth, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_ACCESS_TRANSFER_WRITE_BIT,
+        VK_ACCESS_SHADER_READ_BIT);
+    vkCmdPipelineBarrier(reuse, VK_PIPELINE_STAGE_TRANSFER_BIT,
+        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, NULL, 0, NULL, 1, &b);
+    b = transfer_barrier(depth, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_ACCESS_SHADER_READ_BIT,
+        VK_ACCESS_TRANSFER_WRITE_BIT);
+    vkCmdPipelineBarrier(reuse, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+        VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 0, NULL, 1, &b);
+    assert(reuse->state == PS5VK_RECORDING);
+    assert(vkEndCommandBuffer(reuse) == VK_SUCCESS);
     vkDestroyImage(device, depth, NULL);
     const VkFormat formats[]={VK_FORMAT_R16_SFLOAT,VK_FORMAT_R16G16_SFLOAT,
         VK_FORMAT_R32_UINT,VK_FORMAT_R32_SFLOAT,
