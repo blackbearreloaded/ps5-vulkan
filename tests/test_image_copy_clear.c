@@ -1271,7 +1271,14 @@ static void bgra_tiled_transfer_destination(void)
 #if PS5VK_EXTENDED_COMPUTE_DIAGNOSTIC
 static void extended_storage_round_trip(void)
 {
-    const VkFormat formats[]={VK_FORMAT_R32_UINT,VK_FORMAT_R32_SFLOAT,
+    void *depth_map = NULL;
+    VkImage depth = make_image_extent(VK_FORMAT_R32_SFLOAT,
+        VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+        32, 24, &depth_map);
+    assert(depth_map);
+    vkDestroyImage(device, depth, NULL);
+    const VkFormat formats[]={VK_FORMAT_R16_SFLOAT,VK_FORMAT_R16G16_SFLOAT,
+        VK_FORMAT_R32_UINT,VK_FORMAT_R32_SFLOAT,
         VK_FORMAT_R8G8B8A8_UNORM,VK_FORMAT_R16G16B16A16_SFLOAT,
         VK_FORMAT_R32G32B32A32_SFLOAT};
     for(unsigned n=0;n<sizeof(formats)/sizeof(formats[0]);++n)

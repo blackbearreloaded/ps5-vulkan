@@ -166,6 +166,7 @@ static inline VkResult ps5vk_graphics_image_properties(VkFormat format,
             .maxResourceSize=budget};
         return VK_SUCCESS;
     }
+#if !PS5VK_EXTENDED_COMPUTE_DIAGNOSTIC
     if(format==VK_FORMAT_D32_SFLOAT && type==VK_IMAGE_TYPE_2D &&
        tiling==VK_IMAGE_TILING_OPTIMAL && !flags &&
        (usage==VK_IMAGE_USAGE_SAMPLED_BIT ||
@@ -176,6 +177,7 @@ static inline VkResult ps5vk_graphics_image_properties(VkFormat format,
             .maxResourceSize=budget};
         return VK_SUCCESS;
     }
+#endif
     if(tiling!=VK_IMAGE_TILING_OPTIMAL || !budget ||
        !ps5vk_graphics_image_usage_with_flags(format,type,tiling,usage,flags))
         return VK_ERROR_FORMAT_NOT_SUPPORTED;

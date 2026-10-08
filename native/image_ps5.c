@@ -108,6 +108,13 @@ VkResult ps5vk_native_image_requirements(VkDevice d, const VkImageCreateInfo *in
     }
     int depth = info->format == VK_FORMAT_D32_SFLOAT || info->format == VK_FORMAT_D16_UNORM ||
         info->format == VK_FORMAT_D32_SFLOAT_S8_UINT;
+#if PS5VK_EXTENDED_COMPUTE_DIAGNOSTIC
+    const int r32_compute_sampled = info->format == VK_FORMAT_R32_SFLOAT &&
+        !(info->usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) &&
+        (info->usage == VK_IMAGE_USAGE_SAMPLED_BIT ||
+         info->usage == (VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT));
+    if (r32_compute_sampled) depth = 0;
+#endif
     /* One 2D single-mip, single-layer, single-sample combined surface: the
      * only shape whose two planes the target builder and readback address. */
     if (info->format == VK_FORMAT_D32_SFLOAT_S8_UINT &&
@@ -116,6 +123,9 @@ VkResult ps5vk_native_image_requirements(VkDevice d, const VkImageCreateInfo *in
          info->samples != VK_SAMPLE_COUNT_1_BIT || info->tiling != VK_IMAGE_TILING_OPTIMAL))
         return VK_ERROR_FORMAT_NOT_SUPPORTED;
     if (info->format == VK_FORMAT_D32_SFLOAT &&
+#if PS5VK_EXTENDED_COMPUTE_DIAGNOSTIC
+        !r32_compute_sampled &&
+#endif
         (info->usage & VK_IMAGE_USAGE_SAMPLED_BIT) &&
         (!ps5vk_texture_format_witnessed(info->format,
             PS5VK_FORMAT_CAP_SAMPLED_IMAGE) ||
