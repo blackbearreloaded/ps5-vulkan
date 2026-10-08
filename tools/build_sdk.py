@@ -319,6 +319,11 @@ def main():
             raise SystemExit("PS5VK_EXTENDED_COMPUTE_DIAGNOSTIC must be 0 or 1")
         if extended_compute_diagnostic == "1":
             native_cflags.append("-DPS5VK_EXTENDED_COMPUTE_DIAGNOSTIC=1")
+        helixsr_diagnostic = os.environ.get("PS5VK_HELIXSR_DIAGNOSTIC", "0")
+        if helixsr_diagnostic not in ("0", "1"):
+            raise SystemExit("PS5VK_HELIXSR_DIAGNOSTIC must be 0 or 1")
+        if helixsr_diagnostic == "1":
+            native_cflags.append("-DPS5VK_HELIXSR_DIAGNOSTIC=1")
         shader_int16_diagnostic = os.environ.get("PS5VK_SHADER_INT16_DIAGNOSTIC", "0")
         if shader_int16_diagnostic not in ("0", "1"):
             raise SystemExit("PS5VK_SHADER_INT16_DIAGNOSTIC must be 0 or 1")

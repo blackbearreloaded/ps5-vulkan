@@ -44,8 +44,11 @@ static int subgroup_module_unsupported(const uint32_t *words, size_t count,
         !!(platform_features_t09 & PS5VK_T09_FEATURE_SUBGROUP_ALL_COMPUTE);
     const int quad_compute =
         !!(platform_features_t09 & PS5VK_T09_FEATURE_SUBGROUP_QUAD_COMPUTE);
+    const int helixsr_compute =
+        !!(platform_features_t09 & PS5VK_T09_FEATURE_SUBGROUP_HELIXSR_COMPUTE);
     int basic = 0, ballot = 0, arithmetic = 0, broadcast = 0, iadd = 0, vote = 0, all = 0;
-    int quad_capability = 0, quad_operation = 0;
+    int shuffle_capability = 0, shuffle_operation = 0;
+    int ballot_operation = 0, quad_capability = 0, quad_operation = 0;
     int compute_entry = 0;
     int other_entry = 0, subgroup = 0;
     for (size_t at = 5; at < count; at += words[at] >> 16) {
@@ -57,15 +60,18 @@ static int subgroup_module_unsupported(const uint32_t *words, size_t count,
                 capability == 4423u || capability == 4431u ||
                 capability == 5297u || capability == 6026u) {
                 subgroup = 1;
-                if ((capability != 61u && capability != 62u && capability != 63u && capability != 64u && capability != 68u) ||
-                    (capability == 68u && !quad_compute) ||
+                if ((capability != 61u && capability != 62u && capability != 63u &&
+                     capability != 64u && capability != 65u && capability != 68u) ||
+                    (capability == 68u && !quad_compute && !helixsr_compute) ||
                     (capability == 62u && !all_compute) ||
                     (capability == 63u && !iadd_compute) ||
-                    (capability == 64u && !broadcast_compute)) return 1;
+                    (capability == 64u && !broadcast_compute && !helixsr_compute) ||
+                    (capability == 65u && !helixsr_compute)) return 1;
                 if (capability == 61u) basic = 1;
                 if (capability == 62u) vote = 1;
                 if (capability == 63u) arithmetic = 1;
                 if (capability == 64u) ballot = 1;
+                if (capability == 65u) shuffle_capability = 1;
                 if (capability == 68u) quad_capability = 1;
             }
         }
@@ -78,13 +84,22 @@ static int subgroup_module_unsupported(const uint32_t *words, size_t count,
             opcode == 5296u) {
             subgroup = 1;
             if (opcode == 333u && basic_compute) continue;
-            if (opcode == 334u && all_compute) all = 1;
+            if (opcode == 339u && helixsr_compute) ballot_operation = 1;
+            else if (opcode == 345u && helixsr_compute) shuffle_operation = 1;
+            else if (opcode == 365u && helixsr_compute) quad_operation = 1;
+            else if (opcode == 334u && all_compute) all = 1;
             else if (opcode == 337u && broadcast_compute) broadcast = 1;
             else if (opcode == 349u && iadd_compute) iadd = 1;
             else if ((opcode == 365u || opcode == 366u) && quad_compute) quad_operation = 1;
             else return 1;
         }
     }
+    if (helixsr_compute && (ballot || shuffle_capability || quad_capability))
+        return !compute_entry || other_entry ||
+            (!ballot_operation && !shuffle_operation && !quad_operation) ||
+            (ballot != ballot_operation) ||
+            (shuffle_capability != shuffle_operation) ||
+            (quad_capability != quad_operation);
     return subgroup && ((!basic && !quad_capability) || !compute_entry || other_entry ||
                         (!broadcast && !iadd && !all && !quad_operation && !(basic_compute && !ballot && !arithmetic && !vote)) ||
                         (quad_capability != quad_operation) ||

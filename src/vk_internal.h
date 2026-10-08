@@ -255,6 +255,10 @@ enum ps5vk_t09_feature_bits {
     PS5VK_T09_FEATURE_SUBGROUP_ALL_COMPUTE = 1u << 29,
     /* Extended compute profile image-stage witness, not public QUAD support. */
     PS5VK_T09_FEATURE_SUBGROUP_QUAD_COMPUTE = 1u << 30,
+    /* Private HelixSR measurement route: only OpGroupNonUniformBallot,
+     * OpGroupNonUniformShuffle and OpGroupNonUniformQuadBroadcast in compute.
+     * This bit never maps to public subgroup properties. */
+    PS5VK_T09_FEATURE_SUBGROUP_HELIXSR_COMPUTE = 1u << 31,
     /* Vulkan 1.3 subgroupSizeControl for compute: a pipeline may require
      * subgroup size 32 (the default wave32 dispatch) or 64 (wave64), and
      * requiredSubgroupSizeStages is the compute stage. Varying subgroup sizes

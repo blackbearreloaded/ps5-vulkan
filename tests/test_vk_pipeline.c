@@ -490,6 +490,62 @@ static void diagnostic_compute_quad_gate(void)
     vkDestroyPipelineLayout(&device,pipeline_layout,NULL);
     assert(!device.pipeline_objects && !device.descriptor_objects);
 }
+static void diagnostic_compute_helixsr_gate(void)
+{
+    uint32_t words[26];
+    memcpy(words, module_a, 5 * sizeof(uint32_t));
+    words[5] = words[7] = (2u << 16) | 17u;
+    words[6] = 61u; /* GroupNonUniform */
+    words[8] = 65u; /* GroupNonUniformShuffle */
+    memcpy(words + 9, module_a + 5, 11 * sizeof(uint32_t));
+    words[20] = (5u << 16) | 345u; /* Shuffle */
+    words[21] = words[22] = words[23] = words[24] = 1u;
+    struct VkPhysicalDevice_T physical = {0};
+    struct VkDevice_T device = {.physical = &physical};
+    VkShaderModuleCreateInfo create = {
+        .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+        .codeSize = 25u * sizeof(uint32_t), .pCode = words};
+    VkShaderModule module = VK_NULL_HANDLE;
+    assert(vkCreateShaderModule(&device, &create, NULL, &module) ==
+           VK_ERROR_FEATURE_NOT_PRESENT && !module);
+    physical.platform.supported_features_t09 =
+        PS5VK_T09_FEATURE_SUBGROUP_HELIXSR_COMPUTE;
+    assert(vkCreateShaderModule(&device, &create, NULL, &module) == VK_SUCCESS);
+    vkDestroyShaderModule(&device, module, NULL);
+
+    module = VK_NULL_HANDLE;
+    words[20] = (5u << 16) | 346u; /* ShuffleXor stays outside the profile. */
+    assert(vkCreateShaderModule(&device, &create, NULL, &module) ==
+           VK_ERROR_FEATURE_NOT_PRESENT && !module);
+    words[20] = (5u << 16) | 345u;
+    words[8] = 64u; /* Ballot capability cannot authorize Shuffle. */
+    assert(vkCreateShaderModule(&device, &create, NULL, &module) ==
+           VK_ERROR_FEATURE_NOT_PRESENT && !module);
+
+    words[8] = 64u; /* GroupNonUniformBallot */
+    words[20] = (5u << 16) | 339u; /* Ballot */
+    assert(vkCreateShaderModule(&device, &create, NULL, &module) == VK_SUCCESS);
+    vkDestroyShaderModule(&device, module, NULL);
+    module = VK_NULL_HANDLE;
+    words[20] = (5u << 16) | 340u; /* InverseBallot remains refused. */
+    assert(vkCreateShaderModule(&device, &create, NULL, &module) ==
+           VK_ERROR_FEATURE_NOT_PRESENT && !module);
+
+    words[8] = 68u; /* GroupNonUniformQuad */
+    words[20] = (6u << 16) | 365u; /* QuadBroadcast */
+    words[25] = 1u;
+    create.codeSize = sizeof(words);
+    assert(vkCreateShaderModule(&device, &create, NULL, &module) == VK_SUCCESS);
+    vkDestroyShaderModule(&device, module, NULL);
+    module = VK_NULL_HANDLE;
+    words[20] = (6u << 16) | 366u; /* QuadSwap remains refused here. */
+    assert(vkCreateShaderModule(&device, &create, NULL, &module) ==
+           VK_ERROR_FEATURE_NOT_PRESENT && !module);
+    words[20] = (6u << 16) | 365u;
+    words[10] = 0u; /* Vertex is outside the compute-only route. */
+    assert(vkCreateShaderModule(&device, &create, NULL, &module) ==
+           VK_ERROR_FEATURE_NOT_PRESENT && !module);
+}
 static void diagnostic_compute_all_gate(void)
 {
     uint32_t words[25];
@@ -607,6 +663,7 @@ int main(void)
     lifecycle(); legacy_offline_abi(); dispatch_base_flag(); negative(); graphics_entries();
     t08_capability_gates(); uniform_block_layout_gate(); unadvertised_subgroup_gate();
     diagnostic_compute_basic_gate(); diagnostic_compute_quad_gate();
+    diagnostic_compute_helixsr_gate();
     int8_compute_probe_gate();
     diagnostic_compute_broadcast_gate(); diagnostic_compute_iadd_gate();
     diagnostic_compute_all_gate();
