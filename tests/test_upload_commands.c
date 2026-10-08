@@ -72,6 +72,32 @@ int main(void)
     assert(ps5vk_layout_commit(&layouts)==VK_SUCCESS);
     assert(image.layout==VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
+#if PS5VK_EXTENDED_COMPUTE_DIAGNOSTIC
+    struct ps5vk_operation refresh={.type=PS5VK_IMAGE_BARRIER,
+        .src_stage=VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+        .dst_stage=VK_PIPELINE_STAGE_TRANSFER_BIT,
+        .src_access=VK_ACCESS_SHADER_READ_BIT,
+        .dst_access=VK_ACCESS_TRANSFER_WRITE_BIT,
+        .image_barrier={.image=&image,
+            .oldLayout=VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+            .newLayout=VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            .srcAccessMask=VK_ACCESS_SHADER_READ_BIT,
+            .dstAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT}};
+    layouts=(struct ps5vk_layout_state){0};cursor=words;
+    assert(ps5vk_upload_commands(&device,&refresh,1,NULL,&layouts,&cursor,
+        words+256,flush)==VK_SUCCESS);
+    assert(cursor-words==PS5VK_GRAPHICS_ACQUIRE_WORDS);
+    assert(ps5vk_layout_require(&layouts,&image,
+        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)==VK_SUCCESS);
+    assert(ps5vk_layout_commit(&layouts)==VK_SUCCESS);
+    assert(image.layout==VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+    refresh.src_stage=VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    layouts=(struct ps5vk_layout_state){0};cursor=words;
+    assert(ps5vk_upload_commands(&device,&refresh,1,NULL,&layouts,&cursor,
+        words+256,flush)==VK_ERROR_FEATURE_NOT_PRESENT);
+    image.layout=VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+#endif
+
     /* The same prelude may be discarded on any failure without publishing a
      * layout transition or touching image data. */
     image.layout=VK_IMAGE_LAYOUT_UNDEFINED;

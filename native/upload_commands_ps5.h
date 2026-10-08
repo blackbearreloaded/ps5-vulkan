@@ -122,6 +122,16 @@ static inline VkResult ps5vk_upload_commands(VkDevice d,
                 (b->oldLayout==VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL &&
                  b->newLayout==VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL &&
                  b->srcAccessMask==VK_ACCESS_TRANSFER_WRITE_BIT && b->dstAccessMask==VK_ACCESS_SHADER_READ_BIT) ||
+#if PS5VK_EXTENDED_COMPUTE_DIAGNOSTIC
+                /* The private temporal-compute profile refreshes the same
+                 * sampled inputs after the previous frame's shader reads. */
+                (b->oldLayout==VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL &&
+                 b->newLayout==VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL &&
+                 b->srcAccessMask==VK_ACCESS_SHADER_READ_BIT &&
+                 b->dstAccessMask==VK_ACCESS_TRANSFER_WRITE_BIT &&
+                 op->src_stage==VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT &&
+                 op->dst_stage==VK_PIPELINE_STAGE_TRANSFER_BIT) ||
+#endif
                 /* The pinned draw case's first transition: the RGBA8 colour
                  * attachment that also declares a transfer destination goes
                  * UNDEFINED -> GENERAL for the transfer write that follows, with
